@@ -1,0 +1,15 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this")
+AZURE_AI_API_KEY = os.getenv("AZURE_AI_API_KEY")
+AZURE_AI_O4_ENDPOINT = os.getenv("AZURE_AI_O4_ENDPOINT")
+AZURE_API_VERSION = os.getenv("AZURE_API_VERSION")
+
+# Google OAuth settings
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+REDIRECT_URI = 'http://localhost:8000/auth/callback'
