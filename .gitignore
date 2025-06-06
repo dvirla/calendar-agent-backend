@@ -198,3 +198,7 @@ cython_debug/
 .env
 credentials*
 token*
+
+# Docs
+*.md
+!README.md
