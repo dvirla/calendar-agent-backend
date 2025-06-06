@@ -1,40 +1,37 @@
+# app/main.py
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent
 from .calendar_service import GoogleCalendarService
-from .ai_agent import CalendarAIAgent
+from .agent_w_tools import CalendarAIAgent
 from datetime import datetime, timedelta
 import os
 
-# Initialize FastAPI app
 app = FastAPI(title="Calendar Agent API")
 
-# Add CORS middleware - CORRECTED VERSION
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific URLs
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Initialize services
 calendar_service = GoogleCalendarService()
-ai_agent = CalendarAIAgent()
+ai_agent = CalendarAIAgent(calendar_service)  # Pass calendar_service to agent
 
 @app.get("/")
 async def root():
-    return {"message": "Calendar Agent API is running!"}
+    return {"message": "Calendar Agent API is running with autonomous tools!"}
 
 @app.get("/auth/google")
 async def auth_google():
     """Initiate Google OAuth flow"""
-    try:
-        auth_url = calendar_service.get_auth_url()
-        return {"auth_url": auth_url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating auth URL: {str(e)}")
+    auth_url = calendar_service.get_auth_url()
+    return {"auth_url": auth_url}
 
 @app.get("/auth/callback")
 async def auth_callback(code: str):
@@ -45,30 +42,61 @@ async def auth_callback(code: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/chat")
+@app.post("/chat", response_model=ChatResponse)
 async def chat_with_agent(message: ChatMessage):
-    """Chat with the AI agent"""
+    """Chat with the autonomous AI agent"""
     try:
-        # Get user's calendar events for context
-        events = []
-        try:
-            events = calendar_service.get_events(days_ahead=7)
-        except:
-            pass  # Continue without calendar context if not authenticated
+        # The agent now autonomously decides when to read calendar
+        response = await ai_agent.chat(message.message, message.user_id)
         
-        # Chat with AI agent
-        response = await ai_agent.chat(message.message, events)
-        
-        return {
-            "response": response.message,
-            "suggested_actions": response.suggested_actions
-        }
+        return ChatResponse(
+            response=response.message,
+            suggested_actions=None,  # Agent handles its own suggestions now
+            # Add new fields for pending actions
+            pending_actions=response.pending_actions,
+            requires_approval=response.requires_approval
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/actions/approve/{action_id}")
+async def approve_action(action_id: str):
+    """Approve a pending action from the AI agent"""
+    try:
+        result = await ai_agent.approve_action(action_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/actions/reject/{action_id}")
+async def reject_action(action_id: str):
+    """Reject a pending action from the AI agent"""
+    try:
+        result = await ai_agent.reject_action(action_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/actions/pending")
+async def get_pending_actions():
+    """Get all pending actions that need user approval"""
+    try:
+        pending = [
+            {
+                "action_id": action.action_id,
+                "description": action.description,
+                "type": action.action_type,
+                "details": action.details
+            }
+            for action in ai_agent.pending_actions.values()
+        ]
+        return {"pending_actions": pending}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/calendar/events")
 async def get_calendar_events():
-    """Get user's calendar events"""
+    """Get user's calendar events (now mainly for direct API access)"""
     try:
         events = calendar_service.get_events(days_ahead=7)
         return {"events": [event.dict() for event in events]}
@@ -77,7 +105,7 @@ async def get_calendar_events():
 
 @app.post("/calendar/events")
 async def create_calendar_event(event_request: CreateEventRequest):
-    """Create a new calendar event"""
+    """Create a new calendar event directly (bypass agent)"""
     try:
         event = CalendarEvent(
             title=event_request.title,
@@ -94,22 +122,36 @@ async def create_calendar_event(event_request: CreateEventRequest):
 
 @app.get("/reflection/prompt")
 async def get_reflection_prompt():
-    """Get a daily reflection prompt based on today's completed events"""
+    """Get an autonomous daily reflection prompt"""
     try:
-        # Get today's events
-        all_events = calendar_service.get_events(days_ahead=1)
-        now = datetime.now()
-        
-        # Filter completed events (events that ended before now)
-        completed_events = [
-            event for event in all_events 
-            if event.end_time < now
-        ]
-        
-        prompt = await ai_agent.daily_reflection_prompt(completed_events)
-        return {"prompt": prompt, "completed_events": len(completed_events)}
+        prompt = await ai_agent.daily_reflection_prompt()
+        return {"prompt": prompt}
     except Exception as e:
         return {"prompt": "How was your day today? What did you accomplish?", "error": str(e)}
+
+# New endpoint for testing agent tools
+@app.post("/test/agent-tools")
+async def test_agent_tools():
+    """Test the agent's autonomous capabilities"""
+    try:
+        test_messages = [
+            "What's on my schedule today?",
+            "Can you help me find a free hour tomorrow afternoon?",
+            "I need to schedule a team meeting for 2 hours sometime next week"
+        ]
+        
+        results = []
+        for msg in test_messages:
+            response = await ai_agent.chat(msg)
+            results.append({
+                "question": msg,
+                "response": response.message,
+                "has_pending_actions": response.requires_approval
+            })
+        
+        return {"test_results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
