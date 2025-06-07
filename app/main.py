@@ -24,7 +24,7 @@ app = FastAPI(title="Calendar Agent API")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://memomindai.com", "http://localhost:5173"],
+    allow_origins=["*"], #["https://memomindai.com", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,7 +47,7 @@ async def auth_google():
                 "client_secret": GOOGLE_CLIENT_SECRET,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": ["https://calendar-agent-backend.onrender.com/auth/callback", "http://localhost:8000/auth/callback"]
+                "redirect_uris": ["https://calendar-agent-backend-production.up.railway.app/auth/callback", "http://localhost:8000/auth/callback"]
             }
         },
         scopes=[
@@ -58,7 +58,7 @@ async def auth_google():
         ]
     )
     # Use production URL if available, otherwise fallback to localhost
-    flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend.onrender.com/auth/callback")
+    flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend-production.up.railway.app/auth/callback")
     
     auth_url, _ = flow.authorization_url(prompt='consent')
     return {"auth_url": auth_url}
@@ -75,7 +75,7 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
                     "client_secret": GOOGLE_CLIENT_SECRET,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": ["http://localhost:8000/auth/callback"]
+                    "redirect_uris": ["https://calendar-agent-backend-production.up.railway.app/auth/callback","http://localhost:8000/auth/callback"]
                 }
             },
             scopes=[
@@ -86,7 +86,7 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
             ]
         )
         # Use production URL if available, otherwise fallback to localhost
-        flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend.onrender.com/auth/callback")
+        flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend-production.up.railway.app/auth/callback")
         flow.fetch_token(code=code)
         
         credentials = flow.credentials
