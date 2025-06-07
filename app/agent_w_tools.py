@@ -1,13 +1,14 @@
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.azure import AzureProvider
+import logfire
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import pytz
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION
+from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION, LOGFIRE_TOKEN
 from .models import CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .database import User
@@ -32,6 +33,9 @@ class CalendarDependencies:
     db: Session
     pending_actions: Optional[List[PendingAction]] = None
 
+
+logfire.configure(token=LOGFIRE_TOKEN)  
+logfire.instrument_pydantic_ai()  
 
 class CalendarAIAgent:
     def __init__(self, calendar_service: GoogleCalendarService, user_id: int, user: User, db: Session):
@@ -323,7 +327,7 @@ Keep responses conversational and helpful. Always use tools when you need inform
             except Exception as e:
                 return {"error": f"Could not analyze schedule: {str(e)}"}
     
-    async def chat(self, message: str, user_id: Optional[str] = None) -> AgentResponse:
+    async def chat(self, message: str, user_id: Optional[str] = None, conversation_id: Optional[int] = None) -> AgentResponse:
         """Chat with the autonomous AI agent"""
         try:
             # Get current pending actions from database
@@ -336,7 +340,30 @@ Keep responses conversational and helpful. Always use tools when you need inform
                 db=self.db,
                 pending_actions=current_pending_actions
             )
-            result = await self.agent.run(message, deps=deps)
+            
+            # Get conversation history if conversation_id is provided
+            message_history = None
+            if conversation_id:
+                from .database_utils import ConversationService
+                from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart, TextPart
+                
+                messages = ConversationService.get_conversation_messages(self.db, conversation_id)
+                # Convert to pydantic-ai message format
+                message_history = []
+                for msg in messages[:-1]:
+                    if msg.role == 'user':
+                        message_history.append(
+                            ModelRequest(parts=[UserPromptPart(content=msg.content, timestamp=msg.timestamp)])
+                        )
+                    elif msg.role == 'assistant':
+                        message_history.append(
+                            ModelResponse(
+                                parts=[TextPart(content=msg.content)],
+                                timestamp=msg.timestamp
+                            )
+                        )
+            
+            result = await self.agent.run(message, deps=deps, message_history=message_history)
             
             # Check if there are pending actions that need approval from database
             pending_actions = PendingActionService.get_user_pending_actions(self.db, self.user_id)

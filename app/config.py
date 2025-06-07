@@ -9,6 +9,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this")
 AZURE_AI_API_KEY = os.getenv("AZURE_AI_API_KEY")
 AZURE_AI_O4_ENDPOINT = os.getenv("AZURE_AI_O4_ENDPOINT")
 AZURE_API_VERSION = os.getenv("AZURE_API_VERSION")
+LOGFIRE_TOKEN = os.getenv("LOGFIRE_TOKEN")
 
 # Google OAuth settings
 SCOPES = ['https://www.googleapis.com/auth/calendar']

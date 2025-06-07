@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .agent_w_tools import CalendarAIAgent
-from .database import Base, engine, User
+from .database import Base, engine, User, Conversation
 from .database_utils import get_db, UserService, ConversationService, CalendarService, PendingActionService
 from .auth import AuthService, get_current_user
 from datetime import datetime, timedelta
@@ -148,18 +148,18 @@ async def chat_with_agent(
         calendar_service = GoogleCalendarService(credentials)
         ai_agent = CalendarAIAgent(calendar_service, current_user.id, current_user, db)
         
-        # Create or get conversation
-        conversations = ConversationService.get_user_conversations(db, current_user.id)
+        # Create or get conversation (use most recently created, not updated)
+        conversations = db.query(Conversation).filter(Conversation.user_id == current_user.id).order_by(Conversation.created_at.desc()).all()
         if not conversations:
             conversation = ConversationService.create_conversation(db, current_user.id, "Chat Session")
         else:
-            conversation = conversations[0]  # Use latest conversation
+            conversation = conversations[0]  # Use most recently created conversation
         
         # Save user message
         ConversationService.add_message(db, conversation.id, message.message, "user")
         
-        # Get agent response
-        response = await ai_agent.chat(message.message, str(current_user.id))
+        # Get agent response with conversation history
+        response = await ai_agent.chat(message.message, str(current_user.id), conversation.id)
         
         # Save agent response
         ConversationService.add_message(db, conversation.id, response.message, "assistant")
