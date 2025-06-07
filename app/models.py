@@ -1,5 +1,6 @@
+# app/models.py
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class ChatMessage(BaseModel):
@@ -9,6 +10,8 @@ class ChatMessage(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     suggested_actions: Optional[List[str]] = None
+    pending_actions: Optional[List[Dict[str, Any]]] = None
+    requires_approval: Optional[bool] = False
 
 class CalendarEvent(BaseModel):
     id: Optional[str] = None
@@ -24,3 +27,15 @@ class CreateEventRequest(BaseModel):
     end_time: str    # ISO format
     description: Optional[str] = None
     location: Optional[str] = None
+
+class ActionApprovalRequest(BaseModel):
+    action_id: str
+    approved: bool
+    user_message: Optional[str] = None
+
+class PendingActionResponse(BaseModel):
+    action_id: str
+    action_type: str
+    description: str
+    details: Dict[str, Any]
+    created_at: datetime
