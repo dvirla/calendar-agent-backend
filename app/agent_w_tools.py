@@ -11,6 +11,7 @@ from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION
 from .models import CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .database import User
+from .database_utils import PendingActionService
 
 class AgentResponse(BaseModel):
     message: str
@@ -29,7 +30,8 @@ class CalendarDependencies:
     user_id: int
     user: User
     db: Session
-    pending_actions: Dict[str, PendingAction]
+    pending_actions: Optional[List[PendingAction]] = None
+
 
 class CalendarAIAgent:
     def __init__(self, calendar_service: GoogleCalendarService, user_id: int, user: User, db: Session):
@@ -37,7 +39,6 @@ class CalendarAIAgent:
         self.user_id = user_id
         self.user = user
         self.db = db
-        self.pending_actions: Dict[str, PendingAction] = {}  # In-memory for this session
         # Initialize with calendar service timezone (will be updated when calendar is accessed)
         self.timezone = getattr(calendar_service, 'timezone', pytz.UTC)
         model = OpenAIModel(
@@ -197,12 +198,14 @@ Keep responses conversational and helpful. Always use tools when you need inform
                     conflict_time = self._get_timezone_aware_datetime(conflicts[0].start_time)
                     conflict_warning = f" ⚠️ Warning: This conflicts with {conflicts[0].title} at {conflict_time.strftime('%H:%M')}"
                 
-                # Store pending action with timezone-aware times
-                pending_action = PendingAction(
-                    action_id=action_id,
-                    action_type="create_event",
-                    description=f"Create '{title}' from {start_dt.strftime('%Y-%m-%d %H:%M')} to {end_dt.strftime('%H:%M')}",
-                    details={
+                # Store pending action in database with timezone-aware times
+                PendingActionService.create_pending_action(
+                    ctx.deps.db,
+                    ctx.deps.user_id,
+                    action_id,
+                    "create_event",
+                    f"Create '{title}' from {start_dt.strftime('%Y-%m-%d %H:%M')} to {end_dt.strftime('%H:%M')}",
+                    {
                         "title": title,
                         "start_time": start_dt.isoformat(),
                         "end_time": end_dt.isoformat(),
@@ -210,7 +213,6 @@ Keep responses conversational and helpful. Always use tools when you need inform
                         "location": location
                     }
                 )
-                ctx.deps.pending_actions[action_id] = pending_action
                 
                 return {
                     "action_id": action_id,
@@ -324,24 +326,28 @@ Keep responses conversational and helpful. Always use tools when you need inform
     async def chat(self, message: str, user_id: Optional[str] = None) -> AgentResponse:
         """Chat with the autonomous AI agent"""
         try:
+            # Get current pending actions from database
+            current_pending_actions = PendingActionService.get_user_pending_actions(self.db, self.user_id)
+            
             deps = CalendarDependencies(
                 calendar_service=self.calendar_service,
                 user_id=self.user_id,
                 user=self.user,
                 db=self.db,
-                pending_actions=self.pending_actions
+                pending_actions=current_pending_actions
             )
             result = await self.agent.run(message, deps=deps)
             
-            # Check if there are pending actions that need approval
-            has_pending = len(self.pending_actions) > 0
+            # Check if there are pending actions that need approval from database
+            pending_actions = PendingActionService.get_user_pending_actions(self.db, self.user_id)
+            has_pending = len(pending_actions) > 0
             pending_list = [
                 {
                     "action_id": action.action_id,
                     "description": action.description,
                     "type": action.action_type
                 }
-                for action in self.pending_actions.values()
+                for action in pending_actions
             ] if has_pending else None
             
             return AgentResponse(
@@ -358,10 +364,9 @@ Keep responses conversational and helpful. Always use tools when you need inform
     
     async def approve_action(self, action_id: str) -> Dict[str, Any]:
         """Approve and execute a pending action"""
-        if action_id not in self.pending_actions:
-            return {"error": "Action not found"}
-        
-        action = self.pending_actions[action_id]
+        action = PendingActionService.get_pending_action(self.db, action_id, self.user_id)
+        if not action:
+            return {"error": "Action not found or expired"}
         
         try:
             if action.action_type == "create_event":
@@ -376,8 +381,8 @@ Keep responses conversational and helpful. Always use tools when you need inform
                 
                 event_id = self.calendar_service.create_event(event)
                 
-                # Remove from pending
-                del self.pending_actions[action_id]
+                # Remove from pending actions in database
+                PendingActionService.delete_pending_action(self.db, action_id, self.user_id)
                 
                 return {
                     "success": True,
@@ -392,15 +397,16 @@ Keep responses conversational and helpful. Always use tools when you need inform
     
     async def reject_action(self, action_id: str) -> Dict[str, Any]:
         """Reject a pending action"""
-        if action_id not in self.pending_actions:
-            return {"error": "Action not found"}
+        action = PendingActionService.get_pending_action(self.db, action_id, self.user_id)
+        if not action:
+            return {"error": "Action not found or expired"}
         
-        action = self.pending_actions[action_id]
-        del self.pending_actions[action_id]
+        description = action.description
+        PendingActionService.delete_pending_action(self.db, action_id, self.user_id)
         
         return {
             "success": True,
-            "message": f"❌ Cancelled: {action.description}"
+            "message": f"❌ Cancelled: {description}"
         }
     
     async def daily_reflection_prompt(self) -> str:
@@ -408,12 +414,16 @@ Keep responses conversational and helpful. Always use tools when you need inform
         try:
             # Get today's events with timezone awareness
             today = self._get_current_time().strftime("%Y-%m-%d")
+            
+            # Get current pending actions from database
+            current_pending_actions = PendingActionService.get_user_pending_actions(self.db, self.user_id)
+            
             deps = CalendarDependencies(
                 calendar_service=self.calendar_service,
                 user_id=self.user_id,
                 user=self.user,
                 db=self.db,
-                pending_actions=self.pending_actions
+                pending_actions=current_pending_actions
             )
             events = await self.agent.run(f"Get my events for today ({today}) and create a thoughtful reflection question about them", deps=deps)
             return events.data.message

@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
-from .database import SessionLocal, User, Conversation, Message, CalendarConnection
-from typing import Optional, List
+from .database import SessionLocal, User, Conversation, Message, CalendarConnection, PendingAction
+from typing import Optional, List, Dict, Any
 import json
 from cryptography.fernet import Fernet
+from datetime import datetime, timedelta
 import os
 
 # Encryption key for storing sensitive data
@@ -99,3 +100,73 @@ class CalendarService:
             except:
                 return None
         return None
+
+class PendingActionService:
+    @staticmethod
+    def create_pending_action(
+        db: Session, 
+        user_id: int,
+        action_id: str, 
+        action_type: str, 
+        description: str, 
+        details: Dict[str, Any],
+        expires_in_minutes: int = 30
+    ) -> PendingAction:
+        expires_at = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
+        
+        pending_action = PendingAction(
+            action_id=action_id,
+            user_id=user_id,
+            action_type=action_type,
+            description=description,
+            details=details,
+            expires_at=expires_at
+        )
+        
+        db.add(pending_action)
+        db.commit()
+        db.refresh(pending_action)
+        return pending_action
+    
+    @staticmethod
+    def get_user_pending_actions(db: Session, user_id: int) -> List[PendingAction]:
+        # Clean up expired actions first
+        PendingActionService.cleanup_expired_actions(db)
+        
+        return db.query(PendingAction).filter(
+            PendingAction.user_id == user_id,
+            PendingAction.expires_at > datetime.utcnow()
+        ).all()
+    
+    @staticmethod
+    def get_pending_action(db: Session, action_id: str, user_id: int) -> Optional[PendingAction]:
+        return db.query(PendingAction).filter(
+            PendingAction.action_id == action_id,
+            PendingAction.user_id == user_id,
+            PendingAction.expires_at > datetime.utcnow()
+        ).first()
+    
+    @staticmethod
+    def delete_pending_action(db: Session, action_id: str, user_id: int) -> bool:
+        action = db.query(PendingAction).filter(
+            PendingAction.action_id == action_id,
+            PendingAction.user_id == user_id
+        ).first()
+        
+        if action:
+            db.delete(action)
+            db.commit()
+            return True
+        return False
+    
+    @staticmethod
+    def cleanup_expired_actions(db: Session):
+        expired_actions = db.query(PendingAction).filter(
+            PendingAction.expires_at <= datetime.utcnow()
+        ).all()
+        
+        for action in expired_actions:
+            db.delete(action)
+        
+        if expired_actions:
+            db.commit()

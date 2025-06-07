@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -52,6 +52,21 @@ class Conversation(Base):
     # Relationships
     user = relationship("User", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")
+
+class PendingAction(Base):
+    __tablename__ = "pending_actions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    action_id = Column(String, unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action_type = Column(String, nullable=False)  # "create_event", "update_event", "delete_event"
+    description = Column(Text, nullable=False)
+    details = Column(JSON, nullable=False)  # Store action details as JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)  # Auto-expire pending actions
+    
+    # Relationships
+    user = relationship("User")
 
 class Message(Base):
     __tablename__ = "messages"

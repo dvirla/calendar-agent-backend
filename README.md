@@ -8,7 +8,7 @@ A FastAPI-based backend service for a calendar AI agent that integrates with Goo
 - 📅 **Google Calendar Integration**: Full read/write access to user calendars with encrypted credential storage
 - 🤖 **AI-Powered Calendar Assistant**: Autonomous agent with natural language processing for calendar management
 - 💾 **Persistent Conversations**: Database-backed conversation history and user management
-- ⚡ **Real-Time Action Approval**: User approval workflow for calendar modifications
+- ⚡ **Persistent Action Approval**: Database-backed approval workflow for calendar modifications with auto-expiry
 - 🛡️ **Security-First Design**: Encrypted credentials, per-user isolation, and secure token management
 
 ## Quick Start
@@ -144,6 +144,18 @@ The application uses SQLAlchemy ORM with the following database models:
   - `role`: Message role ('user' or 'assistant')
   - `timestamp`: Message timestamp
 
+#### PendingAction Model
+- **Purpose**: Stores pending calendar actions requiring user approval
+- **Fields**:
+  - `id`: Primary key
+  - `action_id`: Unique action identifier
+  - `user_id`: Foreign key to User
+  - `action_type`: Type of action ('create_event', 'update_event', 'delete_event')
+  - `description`: Human-readable action description
+  - `details`: JSON containing action parameters
+  - `created_at`: Action creation timestamp
+  - `expires_at`: Automatic expiry timestamp (30 minutes default)
+
 ### Database Configuration
 
 The application supports both PostgreSQL (production) and SQLite (development) databases:
@@ -170,6 +182,13 @@ The application supports both PostgreSQL (production) and SQLite (development) d
 #### CalendarService
 - `save_calendar_credentials(db, user_id, credentials_dict)`: Store encrypted credentials
 - `get_calendar_credentials(db, user_id)`: Retrieve decrypted credentials
+
+#### PendingActionService
+- `create_pending_action(db, user_id, action_id, action_type, description, details)`: Store new pending action
+- `get_user_pending_actions(db, user_id)`: Get active pending actions for user
+- `get_pending_action(db, action_id, user_id)`: Get specific action by ID
+- `delete_pending_action(db, action_id, user_id)`: Remove action after approval/rejection
+- `cleanup_expired_actions(db)`: Remove expired actions automatically
 
 ## Authentication System
 
@@ -429,17 +448,35 @@ curl -X POST http://localhost:8000/chat \
 
 #### Action Approval Testing
 ```bash
-# Get pending actions
+# Get pending actions (now persistent in database)
 curl -H "Authorization: Bearer $JWT_TOKEN" \
      http://localhost:8000/actions/pending
 
+# Sample response with pending action
+# {
+#   "pending_actions": [
+#     {
+#       "action_id": "create_1_1672531200",
+#       "description": "Create 'Team Meeting' from 2024-01-15 14:00 to 15:00",
+#       "type": "create_event",
+#       "details": {
+#         "title": "Team Meeting",
+#         "start_time": "2024-01-15T14:00:00-05:00",
+#         "end_time": "2024-01-15T15:00:00-05:00"
+#       }
+#     }
+#   ]
+# }
+
 # Approve action (replace ACTION_ID)
-curl -X POST http://localhost:8000/actions/approve/ACTION_ID \
+curl -X POST http://localhost:8000/actions/approve/create_1_1672531200 \
   -H "Authorization: Bearer $JWT_TOKEN"
 
 # Or reject action
-curl -X POST http://localhost:8000/actions/reject/ACTION_ID \
+curl -X POST http://localhost:8000/actions/reject/create_1_1672531200 \
   -H "Authorization: Bearer $JWT_TOKEN"
+
+# Note: Actions automatically expire after 30 minutes
 ```
 
 ### 4. Automated Testing

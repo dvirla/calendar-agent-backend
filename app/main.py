@@ -7,7 +7,7 @@ from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .agent_w_tools import CalendarAIAgent
 from .database import Base, engine, User
-from .database_utils import get_db, UserService, ConversationService, CalendarService
+from .database_utils import get_db, UserService, ConversationService, CalendarService, PendingActionService
 from .auth import AuthService, get_current_user
 from datetime import datetime, timedelta
 import os
@@ -207,7 +207,8 @@ async def approve_action(
 @app.post("/actions/reject/{action_id}")
 async def reject_action(
     action_id: str, 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Reject a pending action from the AI agent"""
     try:
@@ -239,22 +240,8 @@ async def get_pending_actions(current_user: User = Depends(get_current_user),
                                   db: Session = Depends(get_db)):
     """Get all pending actions that need user approval"""
     try:
-        # Get user's calendar credentials
-        credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
-        if credentials_dict:
-            credentials = Credentials(
-                token=credentials_dict['token'],
-                refresh_token=credentials_dict['refresh_token'],
-                token_uri=credentials_dict['token_uri'],
-                client_id=credentials_dict['client_id'],
-                client_secret=credentials_dict['client_secret'],
-                scopes=credentials_dict['scopes']
-            )
-            calendar_service = GoogleCalendarService(credentials)
-        else:
-            calendar_service = GoogleCalendarService()
-        
-        ai_agent = CalendarAIAgent(calendar_service, current_user.id, current_user, db)
+        # Get pending actions directly from database
+        pending_actions = PendingActionService.get_user_pending_actions(db, current_user.id)
         
         pending = [
             {
@@ -263,7 +250,7 @@ async def get_pending_actions(current_user: User = Depends(get_current_user),
                 "type": action.action_type,
                 "details": action.details
             }
-            for action in ai_agent.pending_actions.values()
+            for action in pending_actions
         ]
         return {"pending_actions": pending}
     except Exception as e:
