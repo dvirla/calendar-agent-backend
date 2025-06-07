@@ -1,64 +1,56 @@
-import pickle
-import os
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 import pytz
 from typing import List, Optional
-from .config import SCOPES, REDIRECT_URI
 from .models import CalendarEvent
 
 class GoogleCalendarService:
-    def __init__(self):
+    def __init__(self, credentials: Optional[Credentials] = None):
         self.service = None
-        self.credentials = None
+        self.credentials = credentials
         # Start with UTC, but will be updated based on calendar settings
         self.timezone = pytz.UTC
         self._timezone_detected = False
-    
-    def get_auth_url(self) -> str:
-        """Generate Google OAuth authorization URL"""
-        flow = Flow.from_client_secrets_file(
-            'credentials.json', 
-            scopes=SCOPES,
-            redirect_uri=REDIRECT_URI
-        )
-        auth_url, _ = flow.authorization_url(prompt='consent')
-        return auth_url
-    
-    def handle_oauth_callback(self, code: str) -> dict:
-        """Handle OAuth callback and store credentials"""
-        flow = Flow.from_client_secrets_file(
-            'credentials.json',
-            scopes=SCOPES,
-            redirect_uri=REDIRECT_URI
-        )
-        flow.fetch_token(code=code)
         
-        # Save credentials
-        self.credentials = flow.credentials
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(self.credentials, token)
-        
-        return {"status": "success", "message": "Calendar connected successfully"}
+        # Initialize service if credentials provided
+        if credentials:
+            self._initialize_service()
     
-    def load_credentials(self) -> bool:
-        """Load saved credentials"""
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                self.credentials = pickle.load(token)
-            
-            # Refresh if expired
-            if self.credentials.expired and self.credentials.refresh_token:
-                self.credentials.refresh(Request())
-                with open('token.pickle', 'wb') as token:
-                    pickle.dump(self.credentials, token)
-            
-            self.service = build('calendar', 'v3', credentials=self.credentials)
-            return True
-        return False
+    def _initialize_service(self):
+        """Initialize the Google Calendar service with current credentials"""
+        if not self.credentials:
+            raise Exception("No credentials provided")
+        
+        # Refresh credentials if expired
+        if self.credentials.expired and self.credentials.refresh_token:
+            self.credentials.refresh(Request())
+        
+        self.service = build('calendar', 'v3', credentials=self.credentials)
+        
+        # Detect timezone on first service initialization
+        if not self._timezone_detected:
+            self._detect_calendar_timezone()
+    
+    def set_credentials(self, credentials: Credentials):
+        """Set new credentials and reinitialize service"""
+        self.credentials = credentials
+        self._initialize_service()
+    
+    def _ensure_service_ready(self):
+        """Ensure service is initialized and credentials are fresh"""
+        if not self.credentials:
+            raise Exception("No calendar credentials found")
+        
+        if not self.service:
+            self._initialize_service()
+        
+        # Refresh credentials if expired
+        if self.credentials.expired and self.credentials.refresh_token:
+            self.credentials.refresh(Request())
+            # Note: In a real implementation, you'd want to update the database here
+            # with the refreshed credentials
     
     def _detect_calendar_timezone(self):
         """Detect and set timezone from calendar settings"""
@@ -112,9 +104,7 @@ class GoogleCalendarService:
     
     def get_events(self, days_ahead: int = 7) -> List[CalendarEvent]:
         """Get calendar events for the next N days"""
-        if not self.service:
-            if not self.load_credentials():
-                raise Exception("No calendar credentials found")
+        self._ensure_service_ready()
         
         # Detect timezone from calendar settings
         self._detect_calendar_timezone()
@@ -154,9 +144,7 @@ class GoogleCalendarService:
     
     def create_event(self, event: CalendarEvent) -> str:
         """Create a new calendar event"""
-        if not self.service:
-            if not self.load_credentials():
-                raise Exception("No calendar credentials found")
+        self._ensure_service_ready()
         
         # Ensure timezone consistency for event creation
         start_time = self._ensure_timezone_aware(event.start_time)

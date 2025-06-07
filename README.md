@@ -2,6 +2,104 @@
 
 A FastAPI-based backend service for a calendar AI agent that integrates with Google Calendar and provides conversational AI capabilities.
 
+## Features
+
+- 🔐 **Multi-User Authentication**: Secure Google OAuth2 integration with JWT tokens
+- 📅 **Google Calendar Integration**: Full read/write access to user calendars with encrypted credential storage
+- 🤖 **AI-Powered Calendar Assistant**: Autonomous agent with natural language processing for calendar management
+- 💾 **Persistent Conversations**: Database-backed conversation history and user management
+- ⚡ **Real-Time Action Approval**: User approval workflow for calendar modifications
+- 🛡️ **Security-First Design**: Encrypted credentials, per-user isolation, and secure token management
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.8+
+- Google Cloud Project with Calendar API enabled
+- Virtual environment (recommended)
+
+### 1. Environment Setup
+
+```bash
+# Clone and navigate to project
+cd calendar-agent-backend
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate     # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Configuration
+
+Create a `.env` file in the project root:
+
+```env
+# Database (SQLite for development, PostgreSQL for production)
+DATABASE_URL=sqlite:///./app.db
+
+# JWT Security
+SECRET_KEY=your-secret-key-change-this-in-production
+
+# Google OAuth (from Google Cloud Console)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# Encryption (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+ENCRYPTION_KEY=your-fernet-encryption-key
+
+# Azure AI (for conversational AI)
+AZURE_AI_API_KEY=your-azure-ai-key
+AZURE_AI_O4_ENDPOINT=your-azure-endpoint
+AZURE_API_VERSION=your-api-version
+```
+
+### 3. Run the Application
+
+```bash
+# Development mode with auto-reload
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Or using the CLAUDE.md command
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000` with interactive docs at `http://localhost:8000/docs`.
+
+## User Authentication Workflow
+
+The application implements a complete multi-user authentication system:
+
+### 1. Initial Authentication
+```
+User Request → GET /auth/google → Google OAuth URL
+              ↓
+Google Login → GET /auth/callback → User Creation/Retrieval
+              ↓
+Credential Storage → JWT Token → Frontend Redirect
+```
+
+### 2. Authenticated Requests
+```
+Client Request + JWT Token → Verify Token → Get User Context
+                            ↓
+Per-User Calendar Service → Encrypted Credentials → Google API
+                            ↓
+AI Agent with User Context → Database Operations → Response
+```
+
+### 3. Security Flow
+- Google OAuth provides user identity and calendar access
+- Calendar credentials are encrypted and stored per-user
+- JWT tokens provide stateless session management
+- All calendar operations are isolated per user
+- Conversation history is maintained per user
+
 ## Database Architecture
 
 ### Database Models
@@ -73,7 +171,7 @@ The application supports both PostgreSQL (production) and SQLite (development) d
 - `save_calendar_credentials(db, user_id, credentials_dict)`: Store encrypted credentials
 - `get_calendar_credentials(db, user_id)`: Retrieve decrypted credentials
 
-<!-- ## Authentication System
+## Authentication System
 
 ### JWT Token Authentication
 
@@ -102,9 +200,12 @@ The application uses JWT (JSON Web Tokens) for authentication with the following
 
 ### Google OAuth Integration
 
-The application integrates with Google OAuth for user authentication:
+The application integrates with Google OAuth for user authentication and calendar access:
 
-- **Scopes**: `https://www.googleapis.com/auth/calendar`
+- **Scopes**: 
+  - `https://www.googleapis.com/auth/calendar` (Calendar read/write access)
+  - `https://www.googleapis.com/auth/userinfo.email` (User email)
+  - `https://www.googleapis.com/auth/userinfo.profile` (User profile)
 - **Redirect URI**: `http://localhost:8000/auth/callback`
 - **Required Environment Variables**:
   - `GOOGLE_CLIENT_ID`
@@ -144,7 +245,7 @@ ENCRYPTION_KEY=your-fernet-encryption-key
 AZURE_AI_API_KEY=your-azure-ai-key
 AZURE_AI_O4_ENDPOINT=your-azure-endpoint
 AZURE_API_VERSION=your-api-version
-``` -->
+```
 
 ## Database Setup
 
@@ -188,6 +289,237 @@ alembic upgrade head
 4. **HTTPS**: Enable HTTPS in production environments
 5. **Token Expiry**: Consider shorter token expiry times for high-security applications
 
+## API Endpoints Reference
+
+### Authentication Endpoints
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/auth/google` | ❌ | Get Google OAuth authorization URL |
+| `GET` | `/auth/callback` | ❌ | Handle Google OAuth callback |
+
+### User Management
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/user/profile` | ✅ | Get current user profile |
+| `GET` | `/user/conversations` | ✅ | Get user's conversation history |
+| `GET` | `/user/conversations/{id}/messages` | ✅ | Get messages from specific conversation |
+
+### Calendar Operations
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/calendar/events` | ✅ | Get user's calendar events (7 days) |
+| `POST` | `/calendar/events` | ✅ | Create new calendar event |
+
+### AI Agent Interaction
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `POST` | `/chat` | ✅ | Chat with AI agent |
+| `POST` | `/actions/approve/{action_id}` | ✅ | Approve pending action |
+| `POST` | `/actions/reject/{action_id}` | ✅ | Reject pending action |
+| `GET` | `/actions/pending` | ✅ | Get pending actions |
+| `GET` | `/reflection/prompt` | ✅ | Get daily reflection prompt |
+
+### Testing & Utility
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/health` | ❌ | Health check |
+| `POST` | `/test/agent-tools` | ✅ | Test agent capabilities |
+
+### Example API Usage
+
+#### 1. Authentication Flow
+```bash
+# Get Google OAuth URL
+curl -X GET "http://localhost:8000/auth/google"
+
+# Response: {"auth_url": "https://accounts.google.com/o/oauth2/auth?..."}
+# User visits URL, completes OAuth, gets redirected with JWT token
+```
+
+#### 2. Chat with AI Agent
+```bash
+# Chat with agent (requires JWT token)
+curl -X POST "http://localhost:8000/chat" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What do I have scheduled today?"}'
+
+# Response: {"response": "You have 3 meetings today...", "requires_approval": false}
+```
+
+#### 3. Create Calendar Event
+```bash
+# Create event directly
+curl -X POST "http://localhost:8000/calendar/events" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Team Meeting",
+    "start_time": "2024-01-15T10:00:00",
+    "end_time": "2024-01-15T11:00:00",
+    "description": "Weekly sync"
+  }'
+```
+
+## Testing Guide
+
+### 1. Environment Testing
+
+```bash
+# Test application startup
+python -c "from app.main import app; print('✓ Application imports successfully')"
+
+# Test database connection
+python -c "from app.database import engine; print('✓ Database connection works')"
+
+# Check health endpoint
+curl http://localhost:8000/health
+```
+
+### 2. Authentication Testing
+
+#### Step 1: Google OAuth Setup
+1. Visit `http://localhost:8000/auth/google`
+2. Copy the `auth_url` from response
+3. Open URL in browser and complete Google authentication
+4. Note the JWT token from redirect URL
+
+#### Step 2: Test Protected Endpoints
+```bash
+# Test user profile (replace YOUR_JWT_TOKEN)
+export JWT_TOKEN="your_actual_jwt_token_here"
+
+# Get user profile
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     http://localhost:8000/user/profile
+
+# Get calendar events
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     http://localhost:8000/calendar/events
+```
+
+### 3. AI Agent Testing
+
+#### Basic Conversation
+```bash
+# Test different types of queries
+echo '# Calendar Reading'
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What meetings do I have today?"}'
+
+echo '\n# Schedule Analysis'
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Find me a free hour tomorrow afternoon"}'
+
+echo '\n# Event Creation (requires approval)'
+curl -X POST http://localhost:8000/chat \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Schedule a 1-hour team meeting for tomorrow at 2 PM"}'
+```
+
+#### Action Approval Testing
+```bash
+# Get pending actions
+curl -H "Authorization: Bearer $JWT_TOKEN" \
+     http://localhost:8000/actions/pending
+
+# Approve action (replace ACTION_ID)
+curl -X POST http://localhost:8000/actions/approve/ACTION_ID \
+  -H "Authorization: Bearer $JWT_TOKEN"
+
+# Or reject action
+curl -X POST http://localhost:8000/actions/reject/ACTION_ID \
+  -H "Authorization: Bearer $JWT_TOKEN"
+```
+
+### 4. Automated Testing
+
+```bash
+# Test all agent capabilities
+curl -X POST http://localhost:8000/test/agent-tools \
+  -H "Authorization: Bearer $JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### 1. "Calendar not connected" Error
+- **Cause**: User hasn't completed Google OAuth flow
+- **Solution**: Visit `/auth/google` and complete authentication
+
+#### 2. "Could not validate credentials" Error
+- **Cause**: Invalid or expired JWT token
+- **Solution**: Re-authenticate through Google OAuth flow
+
+#### 3. Database Connection Issues
+- **Cause**: Invalid DATABASE_URL or missing database
+- **Solution**: Check `.env` file and ensure database exists
+
+#### 4. Google API Errors
+- **Cause**: Invalid Google Cloud credentials or API not enabled
+- **Solution**: Verify Google Cloud Console setup and API permissions
+
+#### 5. Encryption Key Errors
+- **Cause**: Invalid or missing ENCRYPTION_KEY
+- **Solution**: Generate new key: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+### Debug Mode
+
+```bash
+# Run with debug logging
+LOG_LEVEL=DEBUG python -m uvicorn app.main:app --reload
+
+# Check application logs for detailed error information
+```
+
+### Environment Validation
+
+```python
+# Validate all required environment variables
+python -c "
+from app.config import *
+print('✓ All environment variables loaded successfully')
+print(f'Database: {DATABASE_URL[:20]}...')
+print(f'Google Client ID: {GOOGLE_CLIENT_ID[:20]}...')
+"
+```
+
+## Production Deployment
+
+### Security Checklist
+- [ ] Use PostgreSQL database with authentication
+- [ ] Enable HTTPS with valid SSL certificates
+- [ ] Use strong, unique SECRET_KEY and ENCRYPTION_KEY
+- [ ] Configure proper CORS origins (remove `allow_origins=["*"]`)
+- [ ] Set up proper logging and monitoring
+- [ ] Implement rate limiting
+- [ ] Regular security updates
+
+### Docker Deployment
+
+```dockerfile
+# Example Dockerfile
+FROM python:3.9-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
 ## Dependencies
 
 Key dependencies for database and authentication:
@@ -200,3 +532,5 @@ Key dependencies for database and authentication:
 - **cryptography**: Encryption for sensitive data
 - **psycopg2-binary**: PostgreSQL adapter
 - **google-auth-oauthlib**: Google OAuth integration
+- **pydantic-ai**: AI agent framework
+- **google-api-python-client**: Google Calendar API client

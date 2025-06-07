@@ -1,4 +1,3 @@
-# app/improved_agent.py
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.azure import AzureProvider
@@ -7,9 +6,11 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import pytz
 from dataclasses import dataclass
+from sqlalchemy.orm import Session
 from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION
 from .models import CalendarEvent
 from .calendar_service import GoogleCalendarService
+from .database import User
 
 class AgentResponse(BaseModel):
     message: str
@@ -25,12 +26,18 @@ class PendingAction(BaseModel):
 @dataclass
 class CalendarDependencies:
     calendar_service: GoogleCalendarService
+    user_id: int
+    user: User
+    db: Session
     pending_actions: Dict[str, PendingAction]
 
 class CalendarAIAgent:
-    def __init__(self, calendar_service: GoogleCalendarService):
+    def __init__(self, calendar_service: GoogleCalendarService, user_id: int, user: User, db: Session):
         self.calendar_service = calendar_service
-        self.pending_actions: Dict[str, PendingAction] = {}
+        self.user_id = user_id
+        self.user = user
+        self.db = db
+        self.pending_actions: Dict[str, PendingAction] = {}  # In-memory for this session
         # Initialize with calendar service timezone (will be updated when calendar is accessed)
         self.timezone = getattr(calendar_service, 'timezone', pytz.UTC)
         model = OpenAIModel(
@@ -319,6 +326,9 @@ Keep responses conversational and helpful. Always use tools when you need inform
         try:
             deps = CalendarDependencies(
                 calendar_service=self.calendar_service,
+                user_id=self.user_id,
+                user=self.user,
+                db=self.db,
                 pending_actions=self.pending_actions
             )
             result = await self.agent.run(message, deps=deps)
@@ -400,6 +410,9 @@ Keep responses conversational and helpful. Always use tools when you need inform
             today = self._get_current_time().strftime("%Y-%m-%d")
             deps = CalendarDependencies(
                 calendar_service=self.calendar_service,
+                user_id=self.user_id,
+                user=self.user,
+                db=self.db,
                 pending_actions=self.pending_actions
             )
             events = await self.agent.run(f"Get my events for today ({today}) and create a thoughtful reflection question about them", deps=deps)
