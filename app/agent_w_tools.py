@@ -34,7 +34,7 @@ class CalendarDependencies:
     pending_actions: Optional[List[PendingAction]] = None
 
 
-logfire.configure(token=LOGFIRE_TOKEN)  
+logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
 logfire.instrument_pydantic_ai()  
 
 class CalendarAIAgent:
