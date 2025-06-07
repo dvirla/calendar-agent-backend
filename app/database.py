@@ -6,8 +6,12 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-# Database URL (use PostgreSQL for production, SQLite for development)
+# Database URL (Railway provides this for PostgreSQL)
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Railway sometimes provides postgres:// URLs, but SQLAlchemy requires postgresql://
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

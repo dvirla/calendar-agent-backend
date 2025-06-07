@@ -536,15 +536,59 @@ print(f'Google Client ID: {GOOGLE_CLIENT_ID[:20]}...')
 ## Production Deployment
 
 ### Security Checklist
-- [ ] Use PostgreSQL database with authentication
-- [ ] Enable HTTPS with valid SSL certificates
-- [ ] Use strong, unique SECRET_KEY and ENCRYPTION_KEY
-- [ ] Configure proper CORS origins (remove `allow_origins=["*"]`)
+- [x] Use PostgreSQL database with authentication
+- [x] Enable HTTPS with valid SSL certificates
+- [x] Use strong, unique SECRET_KEY and ENCRYPTION_KEY
+- [x] Configure proper CORS origins (only allow memomindai.com)
 - [ ] Set up proper logging and monitoring
 - [ ] Implement rate limiting
 - [ ] Regular security updates
 
-### Docker Deployment
+### Environment Variables for Production
+
+For deployment, make sure to set the following environment variables:
+
+```
+# Database connection
+DATABASE_URL=postgresql://[username]:[password]@[host]:[port]/[database]
+
+# JWT Security
+SECRET_KEY=[strong-secret-key]
+
+# Google OAuth
+GOOGLE_CLIENT_ID=[your-google-client-id]
+GOOGLE_CLIENT_SECRET=[your-google-client-secret]
+
+# Encryption
+ENCRYPTION_KEY=[your-fernet-encryption-key]
+
+# AI Service
+AZURE_AI_API_KEY=[your-azure-ai-key]
+AZURE_AI_O4_ENDPOINT=[your-azure-endpoint]
+AZURE_API_VERSION=[your-api-version]
+
+# Frontend URL (used for redirects after authentication)
+FRONTEND_URL=https://memomindai.com
+
+# Authentication redirect URI
+AUTH_REDIRECT_URI=https://calendar-agent-backend.onrender.com/auth/callback
+```
+
+### Render Deployment
+
+This application is configured to deploy on Render.com:
+
+1. Create a new Web Service on Render
+2. Connect your GitHub repository
+3. Use the following settings:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Environment Variables**: Add all variables listed above
+   - **Plan**: Choose appropriate plan (at least 512MB RAM recommended)
+
+The provided `Procfile` is already configured for deployment on Render.
+
+### Docker Deployment (Alternative)
 
 ```dockerfile
 # Example Dockerfile

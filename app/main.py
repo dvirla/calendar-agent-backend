@@ -24,7 +24,7 @@ app = FastAPI(title="Calendar Agent API")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://memomindai.com", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,7 +47,7 @@ async def auth_google():
                 "client_secret": GOOGLE_CLIENT_SECRET,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": ["http://localhost:8000/auth/callback"]
+                "redirect_uris": ["https://calendar-agent-backend.onrender.com/auth/callback", "http://localhost:8000/auth/callback"]
             }
         },
         scopes=[
@@ -57,7 +57,8 @@ async def auth_google():
             "https://www.googleapis.com/auth/userinfo.profile"
         ]
     )
-    flow.redirect_uri = "http://localhost:8000/auth/callback"
+    # Use production URL if available, otherwise fallback to localhost
+    flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend.onrender.com/auth/callback")
     
     auth_url, _ = flow.authorization_url(prompt='consent')
     return {"auth_url": auth_url}
@@ -84,7 +85,8 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
                 "https://www.googleapis.com/auth/userinfo.profile"
             ]
         )
-        flow.redirect_uri = "http://localhost:8000/auth/callback"
+        # Use production URL if available, otherwise fallback to localhost
+        flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend.onrender.com/auth/callback")
         flow.fetch_token(code=code)
         
         credentials = flow.credentials
@@ -117,7 +119,8 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
         # Create JWT token
         access_token = AuthService.create_access_token(data={"sub": email})
         
-        return RedirectResponse(url=f"http://localhost:5173?auth=success&token={access_token}")
+        frontend_url = os.environ.get("FRONTEND_URL", "https://memomindai.com")
+        return RedirectResponse(url=f"{frontend_url}?auth=success&token={access_token}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
