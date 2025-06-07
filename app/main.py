@@ -410,6 +410,23 @@ async def get_conversation_messages(
         ]
     }
 
+@app.post("/chat/clear")
+async def clear_conversation(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Clear the current conversation and start a new one"""
+    try:
+        # Create a new conversation for the user
+        new_conversation = ConversationService.create_conversation(db, current_user.id, "New Chat Session")
+        
+        return {
+            "message": "Conversation cleared successfully",
+            "conversation_id": new_conversation.id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # New endpoint for testing agent tools
 @app.post("/test/agent-tools")
 async def test_agent_tools(
