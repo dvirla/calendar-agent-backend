@@ -58,7 +58,7 @@ async def auth_google():
         ]
     )
     # Use production URL if available, otherwise fallback to localhost
-    flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend-production.up.railway.app/auth/callback")
+    flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "http://localhost:8000/auth/callback")
     
     auth_url, _ = flow.authorization_url(prompt='consent')
     return {"auth_url": auth_url}
@@ -86,7 +86,7 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
             ]
         )
         # Use production URL if available, otherwise fallback to localhost
-        flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "https://calendar-agent-backend-production.up.railway.app/auth/callback")
+        flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "http://localhost:8000/auth/callback")
         flow.fetch_token(code=code)
         
         credentials = flow.credentials
