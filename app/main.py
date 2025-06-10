@@ -119,7 +119,7 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
         # Create JWT token
         access_token = AuthService.create_access_token(data={"sub": email})
         
-        frontend_url = os.environ.get("FRONTEND_URL", "https://memomindai.com")
+        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
         return RedirectResponse(url=f"{frontend_url}?auth=success&token={access_token}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
