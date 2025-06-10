@@ -24,7 +24,8 @@ app = FastAPI(title="Calendar Agent API")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://memomindai.com", "https://www.memomindai.com", "http://localhost:5173"],
+    allow_origins=["https://memomindai.com", "https://www.memomindai.com", "http://localhost:5173",
+                   "https://calendar-agent-git-homepage-dvirlas-projects.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
