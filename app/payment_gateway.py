@@ -4,6 +4,7 @@ from paddle_billing.Resources.Transactions.Operations import CreateTransaction, 
 from paddle_billing.Resources.Customers.Operations import CreateCustomer, ListCustomers
 from paddle_billing.Resources.Subscriptions.Operations import ListSubscriptions
 from paddle_billing.Resources.Shared.Operations.List.Pager import Pager
+from paddle_billing.Entities.Subscription import SubscriptionStatus
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 from datetime import datetime
@@ -15,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s | %(name)s | %(levelname)s | %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -262,20 +263,19 @@ class PaymentGateway:
 
     async def get_customer_subscription(self, customer_id: str) -> Optional[SubscriptionResponse]:
         try:
-            list_params = ListSubscriptions(customer_ids=[customer_id], statuses=["active"])
+            list_params = ListSubscriptions(customer_ids=[customer_id], statuses=[SubscriptionStatus.Active])
             subscriptions = self.paddle.subscriptions.list(list_params)
-            
-            if not subscriptions:
+            subscription_list = list(subscriptions) if subscriptions else []
+            if not subscription_list:
                 return None
             
-            subscription = subscriptions[0]  # Get the first active subscription
-            
+            subscription = subscription_list[0]  # Get the first active subscription
             return SubscriptionResponse(
                 subscription_id=subscription.id,
                 customer_id=subscription.customer_id,
-                status=subscription.status,
-                current_period_start=datetime.fromisoformat(subscription.current_billing_period.starts_at.replace('Z', '+00:00')),
-                current_period_end=datetime.fromisoformat(subscription.current_billing_period.ends_at.replace('Z', '+00:00')),
+                status=subscription.status.value if hasattr(subscription.status, 'value') else str(subscription.status),
+                current_period_start=subscription.current_billing_period.starts_at,
+                current_period_end=subscription.current_billing_period.ends_at,
                 plan_id=subscription.items[0].price.id if subscription.items else "",
                 plan_name=subscription.items[0].price.name if subscription.items else None
             )
@@ -291,7 +291,8 @@ class PaymentGateway:
                 return False
             
             # Check if subscription is active and not expired
-            now = datetime.now()
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
             return (
                 subscription.status == 'active' and 
                 subscription.current_period_end > now
@@ -332,6 +333,8 @@ async def main():
     for customer in customer_list:
         is_valid = await payment_gateway.is_subscription_valid(customer.customer_id)
         logger.info(f"Customer {customer.customer_id} subscription valid: {is_valid}")
+        costumer_subscription = await payment_gateway.get_customer_subscription(customer.customer_id)
+        logger.info(f"costumer_subscription {customer.name} costumer_subscription: {costumer_subscription.subscription_id}")
 
 if __name__ == "__main__":
     asyncio.run(main())
