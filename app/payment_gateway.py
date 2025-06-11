@@ -117,13 +117,13 @@ class PaymentGateway:
             transaction = self.paddle.transactions.get(payment_intent_id)
             return {
                 "id": transaction.id,
-                "status": transaction.status,
-                "amount": int(transaction.details.totals.grand_total.amount) if transaction.details else 0,
+                "status": transaction.status.value if hasattr(transaction.status, 'value') else str(transaction.status),
+                "amount": int(float(transaction.details.totals.grand_total)) if transaction.details and transaction.details.totals and transaction.details.totals.grand_total else 0,
                 "currency": transaction.currency_code if hasattr(transaction, 'currency_code') else "USD",
                 "charges": [{
                     "id": transaction.id,
-                    "amount": int(transaction.details.totals.grand_total.amount) if transaction.details else 0,
-                    "status": transaction.status,
+                    "amount": int(float(transaction.details.totals.grand_total)) if transaction.details and transaction.details.totals and transaction.details.totals.grand_total else 0,
+                    "status": transaction.status.value if hasattr(transaction.status, 'value') else str(transaction.status),
                     "receipt_url": transaction.receipt_data.url if transaction.receipt_data else None
                 }]
             }
@@ -160,7 +160,7 @@ class PaymentGateway:
             return RefundResponse(
                 refund_id=adjustment.id,
                 status="processed",
-                amount=refund_request.amount or (int(transaction.details.totals.grand_total.amount) if transaction.details else 0),
+                amount=refund_request.amount or (int(float(transaction.details.totals.grand_total)) if transaction.details and transaction.details.totals and transaction.details.totals.grand_total else 0),
                 currency=transaction.currency_code if hasattr(transaction, 'currency_code') else "USD"
             )
         except Exception as e:
@@ -212,10 +212,10 @@ class PaymentGateway:
             return [
                 {
                     "id": transaction.id,
-                    "amount": int(transaction.details.totals.grand_total.amount) if transaction.details else 0,
+                    "amount": int(float(transaction.details.totals.grand_total)) if transaction.details and transaction.details.totals and transaction.details.totals.grand_total else 0,
                     "currency": transaction.currency_code if hasattr(transaction, 'currency_code') else "USD",
-                    "status": transaction.status,
-                    "created": datetime.fromisoformat(transaction.created_at.replace('Z', '+00:00')),
+                    "status": transaction.status.value if hasattr(transaction.status, 'value') else str(transaction.status),
+                    "created": transaction.created_at,
                     "description": transaction.origin if hasattr(transaction, 'origin') else None,
                     "customer": transaction.customer_id
                 }
@@ -335,6 +335,11 @@ async def main():
         logger.info(f"Customer {customer.customer_id} subscription valid: {is_valid}")
         costumer_subscription = await payment_gateway.get_customer_subscription(customer.customer_id)
         logger.info(f"costumer_subscription {customer.name} costumer_subscription: {costumer_subscription.subscription_id}")
+        paymewnts = await payment_gateway.list_payments(customer.customer_id)
+        logger.info(f"paymewnts {paymewnts} ")
+        
+
+        
 
 if __name__ == "__main__":
     asyncio.run(main())
