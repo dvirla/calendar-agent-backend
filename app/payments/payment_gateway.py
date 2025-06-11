@@ -12,7 +12,15 @@ import logging
 import asyncio
 import json
 from dotenv import load_dotenv
-
+from payments_data_classes import (
+    PaymentRequest,
+    PaymentResponse,
+    RefundRequest,
+    RefundResponse,
+    CustomerRequest,
+    CustomerResponse,
+    SubscriptionResponse,
+)
 load_dotenv()
 
 logging.basicConfig(
@@ -21,51 +29,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-class PaymentRequest(BaseModel):
-    amount: int  # Amount in cents
-    currency: str = "usd"
-    description: Optional[str] = None
-    customer_email: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
-
-class PaymentResponse(BaseModel):
-    payment_intent_id: str
-    client_secret: str
-    status: str
-    amount: int
-    currency: str
-
-class RefundRequest(BaseModel):
-    payment_intent_id: str
-    amount: Optional[int] = None  # If None, refunds full amount
-    reason: Optional[str] = None
-
-class RefundResponse(BaseModel):
-    refund_id: str
-    status: str
-    amount: int
-    currency: str
-
-class CustomerRequest(BaseModel):
-    email: str
-    name: Optional[str] = None
-    phone: Optional[str] = None
-    metadata: Optional[Dict[str, str]] = None
-
-class CustomerResponse(BaseModel):
-    customer_id: str
-    email: str
-    name: Optional[str] = None
-    created: datetime
-
-class SubscriptionResponse(BaseModel):
-    subscription_id: str
-    customer_id: str
-    status: str
-    current_period_start: datetime
-    current_period_end: datetime
-    plan_id: str
-    plan_name: Optional[str] = None
 
 class PaymentGateway:
     def __init__(self):
@@ -112,27 +75,9 @@ class PaymentGateway:
             logger.error(f"Paddle error creating transaction: {e}")
             raise Exception(f"Payment creation failed: {str(e)}")
 
-    async def confirm_payment(self, payment_intent_id: str) -> Dict[str, Any]:
-        try:
-            transaction = self.paddle.transactions.get(payment_intent_id)
-            return {
-                "id": transaction.id,
-                "status": transaction.status.value if hasattr(transaction.status, 'value') else str(transaction.status),
-                "amount": int(float(transaction.details.totals.grand_total)) if transaction.details and transaction.details.totals and transaction.details.totals.grand_total else 0,
-                "currency": transaction.currency_code if hasattr(transaction, 'currency_code') else "USD",
-                "charges": [{
-                    "id": transaction.id,
-                    "amount": int(float(transaction.details.totals.grand_total)) if transaction.details and transaction.details.totals and transaction.details.totals.grand_total else 0,
-                    "status": transaction.status.value if hasattr(transaction.status, 'value') else str(transaction.status),
-                    "receipt_url": transaction.receipt_data.url if transaction.receipt_data else None
-                }]
-            }
-        except Exception as e:
-            logger.error(f"Paddle error confirming payment: {e}")
-            raise Exception(f"Payment confirmation failed: {str(e)}")
-
     async def refund_payment(self, refund_request: RefundRequest) -> RefundResponse:
         try:
+            #TODO: Check function
             # Get the original transaction first
             transaction = self.paddle.transactions.get(refund_request.payment_intent_id)
             
@@ -173,14 +118,12 @@ class PaymentGateway:
                 email=customer_request.email,
                 name=customer_request.name
             )
-            
             customer = self.paddle.customers.create(customer_data)
-            
             return CustomerResponse(
                 customer_id=customer.id,
                 email=customer.email,
                 name=customer.name,
-                created=datetime.fromisoformat(customer.created_at.replace('Z', '+00:00'))
+                created=customer.created_at
             )
         except Exception as e:
             logger.error(f"Paddle error creating customer: {e}")
@@ -189,12 +132,11 @@ class PaymentGateway:
     async def get_customer(self, customer_id: str) -> CustomerResponse:
         try:
             customer = self.paddle.customers.get(customer_id)
-            
             return CustomerResponse(
                 customer_id=customer.id,
                 email=customer.email,
                 name=customer.name,
-                created=datetime.fromisoformat(customer.created_at.replace('Z', '+00:00'))
+                created=customer.created_at
             )
         except Exception as e:
             logger.error(f"Paddle error retrieving customer: {e}")
@@ -335,11 +277,35 @@ async def main():
         logger.info(f"Customer {customer.customer_id} subscription valid: {is_valid}")
         costumer_subscription = await payment_gateway.get_customer_subscription(customer.customer_id)
         logger.info(f"costumer_subscription {customer.name} costumer_subscription: {costumer_subscription.subscription_id}")
-        paymewnts = await payment_gateway.list_payments(customer.customer_id)
-        logger.info(f"paymewnts {paymewnts} ")
+        payments = await payment_gateway.list_payments(customer.customer_id)
+        if payments:
+            logger.info(f"payments {payments} ")
         
+async def run_create_customer_test():
+    payment_gateway = PaymentGateway()
+    import uuid
+    unique_email = f"test_{uuid.uuid4().hex[:8]}@gmail.com"
+    customer_request = CustomerRequest(
+        email=unique_email,
+        name="Test User",
+        phone="+1234567890",
+    )
+    response = await payment_gateway.create_customer(customer_request)
+    logger.info(f"create_customer response {response.customer_id} ")
+    da = PaymentRequest(
+            amount=22,  # Amount in cents
+            currency="USD",
+            description="Test Payment",
+            customer_email=unique_email,
+            metadata={"test_key": "test_value"}
+        )
+    response = await payment_gateway.create_payment_intent(
+        da
+    )
+    logger.info(f"create_payment_intent response {response.payment_intent_id} ")
 
         
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # asyncio.run(main())
+    asyncio.run(run_create_customer_test())
