@@ -5,6 +5,10 @@ from paddle_billing.Resources.Customers.Operations import CreateCustomer, ListCu
 from paddle_billing.Resources.Subscriptions.Operations import ListSubscriptions
 from paddle_billing.Resources.Shared.Operations.List.Pager import Pager
 from paddle_billing.Entities.Subscription import SubscriptionStatus
+from paddle_billing.Resources.Products.Operations import ListProducts
+from paddle_billing.Resources.Prices.Operations import ListPrices
+from paddle_billing.Resources.Transactions.Operations.Create.TransactionCreateItem import TransactionCreateItem
+from paddle_billing.Resources.Transactions.Operations.Create.TransactionCreateItemWithPrice import TransactionCreateItemWithPrice
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 from datetime import datetime
@@ -42,38 +46,94 @@ class PaymentGateway:
         self.paddle = Client(api_key=api_key, options=options)
         self.environment = environment
 
-    async def create_payment_intent(self, payment_request: PaymentRequest) -> PaymentResponse:
+    async def create_payment_intent(self, payment_request: PaymentRequest, price_id: str = None) -> PaymentResponse:
         try:
-            # Create transaction with Paddle
-            transaction_request = CreateTransaction(
-                items=[
-                    {
-                        "price": {
-                            "description": payment_request.description or "Payment",
-                            "unit_price": {
-                                "amount": str(payment_request.amount),
-                                "currency_code": payment_request.currency.upper()
-                            }
-                        },
-                        "quantity": 1
+            # Option 1: Use existing catalog price (recommended)
+            if price_id:
+                item = TransactionCreateItem(
+                    price_id=price_id,
+                    quantity=1
+                )
+                transaction_request = CreateTransaction(
+                    items=[item],
+                    custom_data=payment_request.metadata or {}
+                )
+            else:
+                # Option 2: Create ad-hoc price (requires proper structure)
+                # Create ad-hoc price structure
+                price_data = {
+                    "description": payment_request.description or "Payment",
+                    "unit_price": {
+                        "amount": str(payment_request.amount),
+                        "currency_code": payment_request.currency.upper()
                     }
-                ],
-                customer_email=payment_request.customer_email,
-                custom_data=payment_request.metadata or {}
-            )
-            
+                }
+                item = TransactionCreateItemWithPrice(
+                    price=price_data,
+                    quantity=1
+                )
+                transaction_request = CreateTransaction(
+                    items=[item],
+                    custom_data=payment_request.metadata or {}
+                )
             transaction = self.paddle.transactions.create(transaction_request)
-            
             return PaymentResponse(
                 payment_intent_id=transaction.id,
                 client_secret=transaction.checkout.url if transaction.checkout else "",
-                status=transaction.status,
+                status=transaction.status.value if hasattr(transaction.status, 'value') else str(transaction.status),
                 amount=payment_request.amount,
                 currency=payment_request.currency
             )
         except Exception as e:
             logger.error(f"Paddle error creating transaction: {e}")
             raise Exception(f"Payment creation failed: {str(e)}")
+
+    async def list_products(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """List products from your Paddle catalog"""
+        try:
+            pager = Pager(per_page=limit)
+            list_params = ListProducts(pager=pager)
+            products = self.paddle.products.list(list_params)
+            return [
+                {
+                    "id": product.id,
+                    "name": product.name,
+                    "description": product.description,
+                    "status": product.status.value if hasattr(product.status, 'value') else str(product.status),
+                    "created": product.created_at
+                }
+                for product in products
+            ]
+        except Exception as e:
+            logger.error(f"Paddle error listing products: {e}")
+            raise Exception(f"Product listing failed: {str(e)}")
+
+    async def list_prices(self, product_id: str = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """List prices from your Paddle catalog"""
+        try:
+            pager = Pager(per_page=limit)
+            if product_id:
+                list_params = ListPrices(pager=pager, product_ids=[product_id])
+            else:
+                list_params = ListPrices(pager=pager)
+            prices = self.paddle.prices.list(list_params)
+            return [
+                {
+                    "id": price.id,
+                    "product_id": price.product_id,
+                    "description": price.description,
+                    "name": price.name,
+                    "unit_price_amount": price.unit_price.amount,
+                    "unit_price_currency": price.unit_price.currency_code.value if hasattr(price.unit_price.currency_code, 'value') else str(price.unit_price.currency_code),
+                    "billing_cycle": f"{price.billing_cycle.frequency} {price.billing_cycle.interval}" if price.billing_cycle else "one-time",
+                    "status": price.status.value if hasattr(price.status, 'value') else str(price.status),
+                    "created": price.created_at
+                }
+                for price in prices
+            ]
+        except Exception as e:
+            logger.error(f"Paddle error listing prices: {e}")
+            raise Exception(f"Price listing failed: {str(e)}")
 
     async def refund_payment(self, refund_request: RefundRequest) -> RefundResponse:
         try:
@@ -281,6 +341,46 @@ async def main():
         if payments:
             logger.info(f"payments {payments} ")
         
+async def run_catalog_demo():
+    """Demo function showing how to use your Paddle catalog"""
+    payment_gateway = PaymentGateway()
+    
+    try:
+        # 1. List your products
+        logger.info("=== Listing Products ===")
+        products = await payment_gateway.list_products()
+        for product in products:
+            logger.info(f"Product: {product['id']} - {product['name']} - {product['description']}")
+        
+        # 2. List your prices
+        logger.info("=== Listing Prices ===")
+        prices = await payment_gateway.list_prices()
+        for price in prices:
+            logger.info(f"Price: {price['id']} - {price['description']} - {price['unit_price_amount']} {price['unit_price_currency']}")
+        
+        # 3. Create a transaction using a catalog price (if you have any)
+        if prices:
+            price_id = prices[0]['id']  # Use the first price
+            logger.info(f"=== Creating transaction with price_id: {price_id} ===")
+            
+            payment_request = PaymentRequest(
+                amount=100,  # This will be ignored when using catalog price
+                currency="USD",
+                description="Test Payment with Catalog Price",
+                metadata={"test_key": "test_value"}
+            )
+            
+            response = await payment_gateway.create_payment_intent(
+                payment_request, 
+                price_id=price_id  # Use catalog price
+            )
+            logger.info(f"Transaction created: {response.payment_intent_id}")
+        else:
+            logger.info("No prices found in catalog. Create products and prices in Paddle dashboard first.")
+            
+    except Exception as e:
+        logger.error(f"Demo failed: {e}")
+
 async def run_create_customer_test():
     payment_gateway = PaymentGateway()
     import uuid
@@ -292,20 +392,10 @@ async def run_create_customer_test():
     )
     response = await payment_gateway.create_customer(customer_request)
     logger.info(f"create_customer response {response.customer_id} ")
-    da = PaymentRequest(
-            amount=22,  # Amount in cents
-            currency="USD",
-            description="Test Payment",
-            customer_email=unique_email,
-            metadata={"test_key": "test_value"}
-        )
-    response = await payment_gateway.create_payment_intent(
-        da
-    )
-    logger.info(f"create_payment_intent response {response.payment_intent_id} ")
 
         
 
 if __name__ == "__main__":
     # asyncio.run(main())
-    asyncio.run(run_create_customer_test())
+    # asyncio.run(run_create_customer_test())
+    asyncio.run(run_catalog_demo())
