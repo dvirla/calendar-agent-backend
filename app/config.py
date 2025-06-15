@@ -10,6 +10,8 @@ AZURE_AI_API_KEY = os.getenv("AZURE_AI_API_KEY")
 AZURE_AI_O4_ENDPOINT = os.getenv("AZURE_AI_O4_ENDPOINT")
 AZURE_API_VERSION = os.getenv("AZURE_API_VERSION")
 LOGFIRE_TOKEN = os.getenv("LOGFIRE_TOKEN")
+AUTH_REDIRECT_URI = os.environ.get("AUTH_REDIRECT_URI", "http://localhost:8000/auth/callback")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
 # Google OAuth settings
 SCOPES = ['https://www.googleapis.com/auth/calendar']

@@ -14,7 +14,7 @@ import os
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
-from .config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+from .config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, AUTH_REDIRECT_URI, FRONTEND_URL
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -24,8 +24,7 @@ app = FastAPI(title="Calendar Agent API")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://memomindai.com", "https://www.memomindai.com", "http://localhost:5173",
-                   "https://calendar-agent-git-homepage-dvirlas-projects.vercel.app"],
+    allow_origins=["https://memomindai.com", "https://www.memomindai.com", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,7 +47,7 @@ async def auth_google():
                 "client_secret": GOOGLE_CLIENT_SECRET,
                 "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": ["https://calendar-agent-backend-production.up.railway.app/auth/callback", "http://localhost:8000/auth/callback"]
+                "redirect_uris": [AUTH_REDIRECT_URI]
             }
         },
         scopes=[
@@ -59,7 +58,7 @@ async def auth_google():
         ]
     )
     # Use production URL if available, otherwise fallback to localhost
-    flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "http://localhost:8000/auth/callback")
+    flow.redirect_uri = AUTH_REDIRECT_URI
     
     auth_url, _ = flow.authorization_url(prompt='consent')
     return {"auth_url": auth_url}
@@ -76,7 +75,7 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
                     "client_secret": GOOGLE_CLIENT_SECRET,
                     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
                     "token_uri": "https://oauth2.googleapis.com/token",
-                    "redirect_uris": ["https://calendar-agent-backend-production.up.railway.app/auth/callback","http://localhost:8000/auth/callback"]
+                    "redirect_uris": [AUTH_REDIRECT_URI]
                 }
             },
             scopes=[
@@ -87,7 +86,7 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
             ]
         )
         # Use production URL if available, otherwise fallback to localhost
-        flow.redirect_uri = os.environ.get("AUTH_REDIRECT_URI", "http://localhost:8000/auth/callback")
+        flow.redirect_uri = AUTH_REDIRECT_URI
         flow.fetch_token(code=code)
         
         credentials = flow.credentials
@@ -120,7 +119,7 @@ async def auth_callback(code: str, db: Session = Depends(get_db)):
         # Create JWT token
         access_token = AuthService.create_access_token(data={"sub": email})
         
-        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+        frontend_url = FRONTEND_URL
         return RedirectResponse(url=f"{frontend_url}?auth=success&token={access_token}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
