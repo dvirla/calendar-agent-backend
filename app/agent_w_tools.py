@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import pytz
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION, LOGFIRE_TOKEN
+from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION, LOGFIRE_TOKEN, AZURE_MODEL_NAME
 from .models import CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .database import User
@@ -46,7 +46,7 @@ class CalendarAIAgent:
         # Initialize with calendar service timezone (will be updated when calendar is accessed)
         self.timezone = getattr(calendar_service, 'timezone', pytz.UTC)
         model = OpenAIModel(
-            'o4-mini',
+            AZURE_MODEL_NAME,
             provider=AzureProvider(
                 azure_endpoint=AZURE_AI_O4_ENDPOINT,
                 api_version=AZURE_API_VERSION,
