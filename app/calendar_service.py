@@ -102,8 +102,8 @@ class GoogleCalendarService:
             dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
             return self._ensure_timezone_aware(dt)
     
-    def get_events(self, days_ahead: int = 7) -> List[CalendarEvent]:
-        """Get calendar events for the next N days"""
+    def get_events(self, days_ahead: int = 7, days_back: int = 0) -> List[CalendarEvent]:
+        """Get calendar events for the next N days and optionally previous M days"""
         self._ensure_service_ready()
         
         # Detect timezone from calendar settings
@@ -111,11 +111,18 @@ class GoogleCalendarService:
         
         # Use timezone-aware datetime for API calls
         now = datetime.now(self.timezone)
+        
+        # Calculate time range - support both forward and backward
+        if days_back > 0:
+            time_min = now - timedelta(days=days_back)
+        else:
+            time_min = now
+            
         time_max = now + timedelta(days=days_ahead)
         
         events_result = self.service.events().list(
             calendarId='primary',
-            timeMin=now.isoformat(),
+            timeMin=time_min.isoformat(),
             timeMax=time_max.isoformat(),
             maxResults=50,
             singleEvents=True,
