@@ -75,6 +75,7 @@ class CalendarAIAgent:
 ## Available Tools
 - get_calendar_events: Read current/future events (supports days_back parameter for historical events)
 - get_events_for_date: Get specific date events (past or future)
+- search_calendar_events: Search for events by keyword (searches titles, descriptions, locations)
 - propose_calendar_event: Create new event (needs approval)
 - get_free_time_slots: Find available times
 - analyze_schedule_patterns: Analyze scheduling patterns (supports historical analysis)
@@ -176,6 +177,55 @@ Keep responses conversational. Use tools for all schedule information."""
                 ]
             except Exception as e:
                 return [{"error": f"Could not fetch events for {date}: {str(e)}"}]
+        
+        @self.agent.tool
+        async def search_calendar_events(
+            ctx: RunContext[CalendarDependencies], 
+            query: str, 
+            max_results: int = 20,
+            time_min: Optional[str] = None,
+            time_max: Optional[str] = None
+        ) -> List[Dict[str, Any]]:
+            """Search for events by keyword in titles, descriptions, locations, and attendees"""
+            try:
+                # Parse optional time constraints
+                time_min_dt = None
+                time_max_dt = None
+                
+                if time_min:
+                    time_min_dt = datetime.fromisoformat(time_min)
+                    if time_min_dt.tzinfo is None:
+                        time_min_dt = self.timezone.localize(time_min_dt)
+                
+                if time_max:
+                    time_max_dt = datetime.fromisoformat(time_max)
+                    if time_max_dt.tzinfo is None:
+                        time_max_dt = self.timezone.localize(time_max_dt)
+                
+                events = ctx.deps.calendar_service.search_events(
+                    query=query,
+                    max_results=max_results,
+                    time_min=time_min_dt,
+                    time_max=time_max_dt
+                )
+                
+                current_time = self._get_current_time()
+                return [
+                    {
+                        "id": event.id,
+                        "title": event.title,
+                        "start_time": event.start_time.isoformat(),
+                        "end_time": event.end_time.isoformat(),
+                        "description": event.description or "",
+                        "location": event.location or "",
+                        "status": "upcoming" if self._get_timezone_aware_datetime(event.start_time) > current_time else "completed",
+                        "date": event.start_time.strftime("%Y-%m-%d"),
+                        "time": event.start_time.strftime("%H:%M")
+                    }
+                    for event in events
+                ]
+            except Exception as e:
+                return [{"error": f"Could not search calendar events: {str(e)}"}]
         
         @self.agent.tool
         async def propose_calendar_event(
