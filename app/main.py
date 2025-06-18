@@ -3,18 +3,19 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent
+from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent, WaitlistSignup, WaitlistResponse, WaitlistStats, EmailCheck, EmailCheckResponse
 from .calendar_service import GoogleCalendarService
 from .agent_w_tools import CalendarAIAgent
 from .database import Base, engine, User, Conversation
 from .database_utils import get_db, UserService, ConversationService, CalendarService, PendingActionService
 from .auth import AuthService, get_current_user
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from .config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, AUTH_REDIRECT_URI, FRONTEND_URL
+from .waitinglist_service import WaitlistManager
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -32,6 +33,13 @@ app.add_middleware(
 
 # Initialize services (will be per-user now)
 # calendar_service and ai_agent will be initialized per request with user context
+
+# Initialize waitlist manager
+try:
+    waitlist = WaitlistManager()
+except Exception as e:
+    print(f"Warning: Could not initialize waitlist manager: {e}")
+    waitlist = None
 
 @app.get("/")
 async def root():
@@ -474,11 +482,62 @@ async def test_agent_tools(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Waitinglist endpoints
+@app.post("/api/waitlist", response_model=WaitlistResponse)
+async def add_to_waitlist(signup: WaitlistSignup):
+    """Handle waitlist signup"""
+    if not waitlist:
+        raise HTTPException(status_code=503, detail="Waitlist service unavailable")
+    
+    try:
+        data = signup.model_dump()
+        
+        # Add to waitlist
+        result = waitlist.add_to_waitlist(data)
+        
+        # if result['success']:
+        return WaitlistResponse(**result)
+        # else:
+        #     raise HTTPException(status_code=400, detail=result.get('error', 'Failed to add to waitlist'))
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/waitlist/stats", response_model=WaitlistStats)
+async def get_waitlist_stats():
+    """Get waitlist statistics"""
+    if not waitlist:
+        raise HTTPException(status_code=503, detail="Waitlist service unavailable")
+    
+    try:
+        stats = waitlist.get_waitlist_stats()
+        if 'error' in stats:
+            raise HTTPException(status_code=500, detail=stats['error'])
+        return WaitlistStats(**stats)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/waitlist/check", response_model=EmailCheckResponse)
+async def check_existing(email_check: EmailCheck):
+    """Check if email already exists"""
+    if not waitlist:
+        raise HTTPException(status_code=503, detail="Waitlist service unavailable")
+    
+    try:
+        exists = waitlist.check_existing_signup(email_check.email)
+        return EmailCheckResponse(exists=exists)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.utcnow()}
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc)}
 
 if __name__ == "__main__":
     import uvicorn
