@@ -15,4 +15,3 @@ passlib[bcrypt]
 python-multipart
 logfire
 gspread
-aiosmtp
