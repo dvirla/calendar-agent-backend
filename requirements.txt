@@ -15,3 +15,4 @@ passlib[bcrypt]
 python-multipart
 logfire
 gspread
+pydantic[email]
