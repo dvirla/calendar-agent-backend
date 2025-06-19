@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any
 import gspread
+from gspread.exceptions import APIError, GSpreadException
 from google.oauth2.service_account import Credentials
 import smtplib
 from email.mime.text import MIMEText
@@ -132,12 +133,32 @@ class WaitlistManager:
         logger.info(f"Checking for existing signup: {email}")
         email_hash = self._hash_email(email)
         try:
-            cell = self.sheet.find(email_hash, in_column=13)
-            exists = cell is not None
-            logger.info(f"Existing signup check for {email}: {'exists' if exists else 'not found'}")
-            return exists
+            # Use a more robust approach - get all values and search manually
+            # This avoids potential issues with the find() method
+            all_values = self.sheet.get_all_values()
+            if len(all_values) <= 1:  # Only header or empty
+                logger.info(f"No existing signup for {email}: sheet is empty")
+                return False
+            
+            # Check column 13 (0-indexed 12) for email hash
+            for i, row in enumerate(all_values[1:], start=2):  # Skip header, start counting from row 2
+                if len(row) > 12 and row[12] == email_hash:
+                    logger.info(f"Found existing signup for {email} at row {i}")
+                    return True
+            
+            logger.info(f"No existing signup found for {email}")
+            return False
+            
+        except APIError as e:
+            logger.error(f"Google Sheets API error checking existing signup for {email}: {str(e)}")
+            # For API errors, we'll assume email doesn't exist to allow registration to proceed
+            # but log the error for debugging
+            return False
+        except GSpreadException as e:
+            logger.error(f"GSpread error checking existing signup for {email}: {str(e)}")
+            return False
         except Exception as e:
-            logger.error(f"Error checking existing signup for {email}: {str(e)}")
+            logger.error(f"Unexpected error checking existing signup for {email}: {str(e)}")
             return False
     
     def add_to_waitlist(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -159,9 +180,13 @@ class WaitlistManager:
             
             # Get current count for position
             logger.info(f"Getting current waitlist position for: {email}")
-            all_values = self.sheet.get_all_values()
-            position = len(all_values)  # This includes header row
-            logger.info(f"Assigning position {position} to: {email}")
+            try:
+                all_values = self.sheet.get_all_values()
+                position = len(all_values)  # This includes header row
+                logger.info(f"Assigning position {position} to: {email}")
+            except (APIError, GSpreadException) as e:
+                logger.error(f"Error getting sheet data for position calculation: {str(e)}")
+                return {'success': False, 'error': 'Unable to access waitlist data'}
             
             # Prepare row data
             row_data = [
@@ -184,8 +209,12 @@ class WaitlistManager:
             
             # Append to sheet
             logger.info(f"Adding {email} to waitlist spreadsheet")
-            self.sheet.append_row(row_data)
-            logger.info(f"Successfully added {email} to spreadsheet at position {position}")
+            try:
+                self.sheet.append_row(row_data)
+                logger.info(f"Successfully added {email} to spreadsheet at position {position}")
+            except (APIError, GSpreadException) as e:
+                logger.error(f"Error adding {email} to spreadsheet: {str(e)}")
+                return {'success': False, 'error': 'Unable to add to waitlist spreadsheet'}
             
             # Send confirmation email - fail entire process if email fails
             logger.info(f"Sending confirmation email to: {email}")
@@ -193,7 +222,12 @@ class WaitlistManager:
             if not email_result['success']:
                 logger.error(f"Email sending failed for {email}, removing from waitlist: {email_result['error']}")
                 # Remove the row we just added since email failed
-                self.sheet.delete_rows(len(self.sheet.get_all_values()))
+                try:
+                    current_rows = self.sheet.get_all_values()
+                    self.sheet.delete_rows(len(current_rows))
+                    logger.info(f"Removed {email} from waitlist due to email failure")
+                except (APIError, GSpreadException) as e:
+                    logger.error(f"Failed to remove {email} from waitlist after email failure: {str(e)}")
                 return {'success': False, 'error': f'Registration failed: {email_result["error"]}'}
             
             logger.info(f"Successfully completed waitlist registration for: {email}")
@@ -202,6 +236,12 @@ class WaitlistManager:
                 'position': position,
                 'message': 'Successfully added to waitlist and confirmation email sent'
             }
+        except APIError as e:
+            logger.error(f"Google Sheets API error during waitlist registration for {email}: {str(e)}")
+            return {'success': False, 'error': 'Waitlist service temporarily unavailable'}
+        except GSpreadException as e:
+            logger.error(f"GSpread error during waitlist registration for {email}: {str(e)}")
+            return {'success': False, 'error': 'Unable to access waitlist data'}
         except Exception as e:
             logger.error(f"Unexpected error during waitlist registration for {email}: {str(e)}")
             return {'success': False, 'error': str(e)}
@@ -459,8 +499,24 @@ class WaitlistManager:
                 'error': None
             }
             
+        except APIError as e:
+            logger.error(f"Google Sheets API error calculating waitlist stats: {str(e)}")
+            return {
+                'total': 0,
+                'roles': {},
+                'last_signup': None,
+                'error': f'Google Sheets API error: {str(e)}'
+            }
+        except GSpreadException as e:
+            logger.error(f"GSpread error calculating waitlist stats: {str(e)}")
+            return {
+                'total': 0,
+                'roles': {},
+                'last_signup': None,
+                'error': f'Spreadsheet access error: {str(e)}'
+            }
         except Exception as e:
-            logger.error(f"Error calculating waitlist stats: {str(e)}")
+            logger.error(f"Unexpected error calculating waitlist stats: {str(e)}")
             return {
                 'total': 0,
                 'roles': {},
