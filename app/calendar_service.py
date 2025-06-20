@@ -102,8 +102,8 @@ class GoogleCalendarService:
             dt = datetime.fromisoformat(dt_string.replace('Z', '+00:00'))
             return self._ensure_timezone_aware(dt)
     
-    def get_events(self, days_ahead: int = 7) -> List[CalendarEvent]:
-        """Get calendar events for the next N days"""
+    def get_events(self, days_ahead: int = 7, days_back: int = 0) -> List[CalendarEvent]:
+        """Get calendar events for the next N days and optionally previous M days"""
         self._ensure_service_ready()
         
         # Detect timezone from calendar settings
@@ -111,11 +111,18 @@ class GoogleCalendarService:
         
         # Use timezone-aware datetime for API calls
         now = datetime.now(self.timezone)
+        
+        # Calculate time range - support both forward and backward
+        if days_back > 0:
+            time_min = now - timedelta(days=days_back)
+        else:
+            time_min = now
+            
         time_max = now + timedelta(days=days_ahead)
         
         events_result = self.service.events().list(
             calendarId='primary',
-            timeMin=now.isoformat(),
+            timeMin=time_min.isoformat(),
             timeMax=time_max.isoformat(),
             maxResults=50,
             singleEvents=True,
@@ -164,3 +171,58 @@ class GoogleCalendarService:
         ).execute()
         
         return created_event['id']
+    
+    def search_events(self, query: str, max_results: int = 50, time_min: Optional[datetime] = None, time_max: Optional[datetime] = None) -> List[CalendarEvent]:
+        """
+        Search for events using Google Calendar API's built-in search
+        Searches across event titles, descriptions, locations, and attendees
+        """
+        self._ensure_service_ready()
+        
+        if not query.strip():
+            return []
+        
+        # Detect timezone from calendar settings
+        self._detect_calendar_timezone()
+        
+        # Prepare search parameters
+        search_params = {
+            'calendarId': 'primary',
+            'q': query.strip(),
+            'maxResults': max_results,
+            'singleEvents': True,
+            'orderBy': 'startTime'
+        }
+        
+        # Add time constraints if provided
+        if time_min:
+            time_min_aware = self._ensure_timezone_aware(time_min)
+            search_params['timeMin'] = time_min_aware.isoformat()
+        
+        if time_max:
+            time_max_aware = self._ensure_timezone_aware(time_max)
+            search_params['timeMax'] = time_max_aware.isoformat()
+        
+        # Execute search
+        events_result = self.service.events().list(**search_params).execute()
+        
+        # Parse results
+        events = []
+        for event in events_result.get('items', []):
+            start = event['start'].get('dateTime', event['start'].get('date'))
+            end = event['end'].get('dateTime', event['end'].get('date'))
+            
+            # Parse and ensure timezone consistency
+            start_dt = self._parse_datetime_with_timezone(start)
+            end_dt = self._parse_datetime_with_timezone(end)
+            
+            events.append(CalendarEvent(
+                id=event['id'],
+                title=event.get('summary', 'No Title'),
+                start_time=self._ensure_timezone_aware(start_dt),
+                end_time=self._ensure_timezone_aware(end_dt),
+                description=event.get('description', ''),
+                location=event.get('location', '')
+            ))
+        
+        return events

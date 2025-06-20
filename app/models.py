@@ -1,5 +1,5 @@
 # app/models.py
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -39,3 +39,36 @@ class PendingActionResponse(BaseModel):
     description: str
     details: Dict[str, Any]
     created_at: datetime
+
+# Waitinglist models
+class WaitlistSignup(BaseModel):
+    email: EmailStr
+    name: str
+    interestedFeatures: str  # "AI Scheduler", "Reflections", "Both", "other (explain)"
+    primaryUsage: str  # "Work", "Private Life", "Work-Life Balance", "other (explain)"
+    schedulingFrustration: str  # free text
+    currentCalendarTool: str  # "Google Calendar", "Outlook", "Apple Calendar", "Notion", "Pen and Paper", "other (explain)"
+    roleProfession: str  # "Entrepreneur/Founder", "Manager/Executive", "Consultant/Freelancer", "Developer/Designer", "Sales/Marketing", "Student", "Other (explain)"
+    company: str = ""
+    referralSource: str = ""
+    utmSource: str = ""
+    timestamp: Optional[str] = None
+    timezone: Optional[str] = None
+
+class WaitlistResponse(BaseModel):
+    success: bool
+    position: Optional[int] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+class WaitlistStats(BaseModel):
+    total: int
+    roles: Dict[str, int]
+    last_signup: Optional[str] = None
+    error: Optional[str] = None
+
+class EmailCheck(BaseModel):
+    email: EmailStr
+
+class EmailCheckResponse(BaseModel):
+    exists: bool

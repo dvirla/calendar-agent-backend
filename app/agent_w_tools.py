@@ -8,7 +8,14 @@ from datetime import datetime, timedelta
 import pytz
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION, LOGFIRE_TOKEN, MODEL_TEMPRATURE
+from .config import (
+    AZURE_AI_API_KEY, 
+    AZURE_AI_O4_ENDPOINT, 
+    AZURE_API_VERSION, 
+    LOGFIRE_TOKEN, 
+    AZURE_MODEL_NAME, 
+    MODEL_TEMPRATURE
+)
 from .models import CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .database import User
@@ -46,7 +53,7 @@ class CalendarAIAgent:
         # Initialize with calendar service timezone (will be updated when calendar is accessed)
         self.timezone = getattr(calendar_service, 'timezone', pytz.UTC)
         model = OpenAIModel(
-            'o4-mini',
+            AZURE_MODEL_NAME,
             provider=AzureProvider(
                 azure_endpoint=AZURE_AI_O4_ENDPOINT,
                 api_version=AZURE_API_VERSION,
@@ -61,28 +68,29 @@ class CalendarAIAgent:
             model_settings={
                 "temperature": MODEL_TEMPRATURE,
             },
-            system_prompt="""You are an autonomous calendar assistant with the following capabilities:
+            system_prompt=f"""You are a calendar scheduling assistant. Current date/time: {self._get_current_time()}
 
-1. **Reading Calendar**: You can autonomously read the user's calendar to understand their schedule
-2. **Writing Calendar**: You can propose calendar changes, but MUST get user approval first
-3. **Daily Reflection**: Help users reflect on their completed activities
-4. **Schedule Planning**: Proactively suggest schedule optimizations
+## Core Functions
+- **Read**: Access user's calendar autonomously (past and future events)
+- **Write**: Propose calendar changes (requires user approval)
+- **Plan**: Suggest schedule optimizations for meetings, work blocks, and personal time
 
-IMPORTANT RULES:
-- Always read the calendar first when discussing schedules
-- For any calendar modifications, explain what you want to do and ask for approval
-- Be proactive - suggest improvements and ask thoughtful questions
-- When creating events, always confirm details like time, duration, and description
-- Consider the user's existing schedule to avoid conflicts
+## Rules
+1. Always check existing calendar before discussing schedules
+2. Get explicit approval before any modifications
+3. Confirm event details: time, duration, description
+4. Avoid scheduling conflicts
+5. Be proactive with optimization suggestions
 
-Available tools:
-- get_calendar_events: Read current calendar events
-- get_events_for_date: Get events for a specific date
-- propose_calendar_event: Propose creating a new event (requires approval)
-- get_free_time_slots: Find available time slots
-- analyze_schedule_patterns: Analyze user's scheduling patterns
+## Available Tools
+- get_calendar_events: Read current/future events (supports days_back parameter for historical events)
+- get_events_for_date: Get specific date events (past or future)
+- search_calendar_events: Search for events by keyword (searches titles, descriptions, locations)
+- propose_calendar_event: Create new event (needs approval)
+- get_free_time_slots: Find available times
+- analyze_schedule_patterns: Analyze scheduling patterns (supports historical analysis)
 
-Keep responses conversational and helpful. Always use tools when you need information."""
+Keep responses conversational. Use tools for all schedule information."""
         )
         
         # Register tools
@@ -113,19 +121,19 @@ Keep responses conversational and helpful. Always use tools when you need inform
     def _register_tools(self):
         """Register all available tools with the agent"""
 
-        @self.agent.tool_plain
-        async def get_current_date() -> str:
-            """
-            Get the current date and time.
-            """
-            now = self._get_current_time()
-            return now.isoformat()
+        # @self.agent.tool_plain
+        # async def get_current_date() -> str:
+        #     """
+        #     Get the current date and time.
+        #     """
+        #     now = self._get_current_time()
+        #     return now.isoformat()
         
         @self.agent.tool
-        async def get_calendar_events(ctx: RunContext[CalendarDependencies], days_ahead: int = 7) -> List[Dict[str, Any]]:
-            """Get the user's calendar events for the next N days"""
+        async def get_calendar_events(ctx: RunContext[CalendarDependencies], days_ahead: int = 7, days_back: int = 0) -> List[Dict[str, Any]]:
+            """Get the user's calendar events for the next N days and optionally previous M days"""
             try:
-                events = ctx.deps.calendar_service.get_events(days_ahead=days_ahead)
+                events = ctx.deps.calendar_service.get_events(days_ahead=days_ahead, days_back=days_back)
                 current_time = self._get_current_time()
                 return [
                     {
@@ -151,7 +159,16 @@ Keep responses conversational and helpful. Always use tools when you need inform
                 if target_date.tzinfo is None:
                     target_date = self.timezone.localize(target_date)
                 
-                all_events = ctx.deps.calendar_service.get_events(days_ahead=30)
+                # Calculate days back and ahead to ensure we get the target date
+                today = self._get_current_time().date()
+                if target_date.date() < today:
+                    days_back = (today - target_date.date()).days
+                    days_ahead = 1
+                else:
+                    days_back = 0
+                    days_ahead = (target_date.date() - today).days + 1
+                
+                all_events = ctx.deps.calendar_service.get_events(days_ahead=days_ahead, days_back=days_back)
                 
                 day_events = [
                     event for event in all_events
@@ -170,6 +187,55 @@ Keep responses conversational and helpful. Always use tools when you need inform
                 ]
             except Exception as e:
                 return [{"error": f"Could not fetch events for {date}: {str(e)}"}]
+        
+        @self.agent.tool
+        async def search_calendar_events(
+            ctx: RunContext[CalendarDependencies], 
+            query: str, 
+            max_results: int = 20,
+            time_min: Optional[str] = None,
+            time_max: Optional[str] = None
+        ) -> List[Dict[str, Any]]:
+            """Search for events by keyword in titles, descriptions, locations, and attendees"""
+            try:
+                # Parse optional time constraints
+                time_min_dt = None
+                time_max_dt = None
+                
+                if time_min:
+                    time_min_dt = datetime.fromisoformat(time_min)
+                    if time_min_dt.tzinfo is None:
+                        time_min_dt = self.timezone.localize(time_min_dt)
+                
+                if time_max:
+                    time_max_dt = datetime.fromisoformat(time_max)
+                    if time_max_dt.tzinfo is None:
+                        time_max_dt = self.timezone.localize(time_max_dt)
+                
+                events = ctx.deps.calendar_service.search_events(
+                    query=query,
+                    max_results=max_results,
+                    time_min=time_min_dt,
+                    time_max=time_max_dt
+                )
+                
+                current_time = self._get_current_time()
+                return [
+                    {
+                        "id": event.id,
+                        "title": event.title,
+                        "start_time": event.start_time.isoformat(),
+                        "end_time": event.end_time.isoformat(),
+                        "description": event.description or "",
+                        "location": event.location or "",
+                        "status": "upcoming" if self._get_timezone_aware_datetime(event.start_time) > current_time else "completed",
+                        "date": event.start_time.strftime("%Y-%m-%d"),
+                        "time": event.start_time.strftime("%H:%M")
+                    }
+                    for event in events
+                ]
+            except Exception as e:
+                return [{"error": f"Could not search calendar events: {str(e)}"}]
         
         @self.agent.tool
         async def propose_calendar_event(
@@ -193,7 +259,8 @@ Keep responses conversational and helpful. Always use tools when you need inform
                 start_dt = self._get_timezone_aware_datetime(start_dt)
                 end_dt = self._get_timezone_aware_datetime(end_dt)
                 
-                existing_events = ctx.deps.calendar_service.get_events(days_ahead=30)
+                # Get events for conflict checking - look both ways
+                existing_events = ctx.deps.calendar_service.get_events(days_ahead=30, days_back=7)
                 conflicts = [
                     event for event in existing_events
                     if (start_dt < self._get_timezone_aware_datetime(event.end_time) and 
@@ -296,10 +363,10 @@ Keep responses conversational and helpful. Always use tools when you need inform
                 return [{"error": f"Could not find free slots: {str(e)}"}]
         
         @self.agent.tool
-        async def analyze_schedule_patterns(ctx: RunContext[CalendarDependencies]) -> Dict[str, Any]:
+        async def analyze_schedule_patterns(ctx: RunContext[CalendarDependencies], days_ahead: int = 30, days_back: int = 30) -> Dict[str, Any]:
             """Analyze the user's scheduling patterns and provide insights"""
             try:
-                events = ctx.deps.calendar_service.get_events(days_ahead=30)
+                events = ctx.deps.calendar_service.get_events(days_ahead=days_ahead, days_back=days_back)
                 
                 if not events:
                     return {"message": "No recent events to analyze"}

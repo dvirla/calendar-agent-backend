@@ -17,3 +17,5 @@ logfire
 paddle-python-sdk
 pytest
 pytest-asyncio
+gspread
+pydantic[email]
