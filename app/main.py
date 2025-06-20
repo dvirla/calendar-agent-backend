@@ -513,7 +513,7 @@ async def get_waitlist_stats():
     
     try:
         stats = waitlist.get_waitlist_stats()
-        if 'error' in stats:
+        if stats['error']:
             raise HTTPException(status_code=500, detail=stats['error'])
         return WaitlistStats(**stats)
     except HTTPException:
