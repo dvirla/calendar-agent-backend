@@ -65,6 +65,13 @@ class ConversationService:
     @staticmethod
     def get_conversation_messages(db: Session, conversation_id: int) -> List[Message]:
         return db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.timestamp).all()
+    
+    @staticmethod
+    def get_user_conversations_since(db: Session, user_id: int, since: datetime) -> List[Conversation]:
+        return db.query(Conversation).filter(
+            Conversation.user_id == user_id,
+            Conversation.created_at >= since
+        ).order_by(Conversation.created_at.desc()).all()
 
 class CalendarService:
     @staticmethod

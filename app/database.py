@@ -30,6 +30,7 @@ class User(Base):
     # Relationships
     conversations = relationship("Conversation", back_populates="user")
     calendar_connection = relationship("CalendarConnection", back_populates="user", uselist=False)
+    reflections = relationship("Reflection", back_populates="user")
 
 class CalendarConnection(Base):
     __tablename__ = "calendar_connections"
@@ -83,6 +84,19 @@ class Message(Base):
     
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
+    
+class Reflection(Base):
+    __tablename__ = "reflections"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    description = Column(Text, nullable=False)
+    details = Column(JSON, nullable=False)  # Store action details as JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="reflections")
+
 
 if __name__ == "__main__":
     # Create tables
