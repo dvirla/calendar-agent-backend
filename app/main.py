@@ -14,13 +14,25 @@ import os
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
-from .config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, AUTH_REDIRECT_URI, FRONTEND_URL
+from .config import (
+    GOOGLE_CLIENT_ID, 
+    GOOGLE_CLIENT_SECRET, 
+    LOGFIRE_TOKEN, 
+    AUTH_REDIRECT_URI, 
+    FRONTEND_URL
+)
+from .verification_service import VerificationService
+import logfire
 from .waitinglist_service import WaitlistManager
 
+
+logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
+logfire.instrument_pydantic_ai() 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Calendar Agent API")
+verification_service = VerificationService()
 
 # CORS middleware
 app.add_middleware(
@@ -140,6 +152,15 @@ async def chat_with_agent(
 ):
     """Chat with the autonomous AI agent"""
     try:
+        verification_result = verification_service.validate_user_input(message.message, current_user.id)
+        logfire.info(f"User {current_user.id}, verification_result: {verification_result}")
+        if not verification_result['valid']:
+            return ChatResponse(
+                response=verification_result['error'],
+                suggested_actions=None,
+                pending_actions=None,
+                requires_approval=None
+            )
         # Get user's calendar credentials
         credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
         if not credentials_dict:
