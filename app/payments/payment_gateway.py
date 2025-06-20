@@ -192,6 +192,7 @@ class PaymentGateway:
     async def get_customer(self, customer_id: str) -> CustomerResponse:
         try:
             customer = self.paddle.customers.get(customer_id)
+            logger.info(f"customer {customer} ")
             return CustomerResponse(
                 customer_id=customer.id,
                 email=customer.email,
@@ -291,7 +292,7 @@ class PaymentGateway:
             
             if not subscription:
                 return False
-            
+            logger.error(f"subscription: {subscription}")
             # Check if subscription is active and not expired
             from datetime import timezone
             now = datetime.now(timezone.utc)
@@ -326,20 +327,135 @@ class PaymentGateway:
             logger.error(f"Paddle error retrieving customers: {e}")
             raise Exception(f"Customer retrieval failed: {str(e)}")
         
+    async def get_subscription_with_plan_details(self, customer_id: str) -> Optional[Dict[str, Any]]:
+        """Get customer subscription with full plan details"""
+        try:
+            # Get the subscription
+            subscription = await self.get_customer_subscription(customer_id)
+            if not subscription:
+                return None
+            
+            # Get the price details using the plan_id (which is actually a price_id)
+            price = self.paddle.prices.get(subscription.plan_id)
+            
+            # Get the product details using the price's product_id
+            product = self.paddle.products.get(price.product_id)
+            
+            return {
+                'subscription_id': subscription.subscription_id,
+                'customer_id': subscription.customer_id,
+                'status': subscription.status,
+                'current_period_start': subscription.current_period_start,
+                'current_period_end': subscription.current_period_end,
+                'price_id': subscription.plan_id,
+                'price_name': price.name,
+                'price_description': price.description,
+                'price_amount': price.unit_price.amount,
+                'price_currency': price.unit_price.currency_code.value if hasattr(price.unit_price.currency_code, 'value') else str(price.unit_price.currency_code),
+                'billing_cycle': f"{price.billing_cycle.frequency} {price.billing_cycle.interval}" if price.billing_cycle else "one-time",
+                'product_id': price.product_id,
+                'product_name': product.name,
+                'product_description': product.description
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting subscription with plan details: {e}")
+            return None
+
+# Updated main function to demonstrate the fix
+async def main_fixed():
+    payment_gateway = PaymentGateway()
+    customer_list = await payment_gateway.get_all_customers_and_log()
+    products = await payment_gateway.list_products()
+    prices = await payment_gateway.list_prices()
+    
+    logger.info(f"Available products: {products}")
+    logger.info(f"Available prices: {prices}")
+    
+    # Process each customer's subscription with full details
+    for customer in customer_list:
+        subscription_details = await payment_gateway.get_subscription_with_plan_details(customer.customer_id)
+        
+        if subscription_details:
+            logger.info(f"Customer {customer.name} ({customer.customer_id}):")
+            logger.info(f"  - Product: {subscription_details['product_name']} (ID: {subscription_details['product_id']})")
+            logger.info(f"  - Price: {subscription_details['price_name']} - {subscription_details['price_amount']} {subscription_details['price_currency']}")
+            logger.info(f"  - Billing: {subscription_details['billing_cycle']}")
+            logger.info(f"  - Status: {subscription_details['status']}")
+        else:
+            logger.info(f"Customer {customer.name} has no active subscription")
+        
+        break  # Remove this to process all customers
+
+# Alternative: Create a mapping function
+async def create_price_to_product_mapping(self) -> Dict[str, Dict[str, Any]]:
+    """Create a mapping of price_id to product details for quick lookups"""
+    try:
+        prices = await self.list_prices()
+        products = await self.list_products()
+        
+        # Create product lookup dict
+        product_lookup = {product['id']: product for product in products}
+        
+        # Create price to product mapping
+        price_to_product = {}
+        for price in prices:
+            product_id = price['product_id']
+            if product_id in product_lookup:
+                price_to_product[price['id']] = {
+                    'price_info': price,
+                    'product_info': product_lookup[product_id]
+                }
+        
+        return price_to_product
+        
+    except Exception as e:
+        logger.error(f"Error creating price-to-product mapping: {e}")
+        return {}
+
+# Usage example with mapping
+async def main_with_mapping():
+    payment_gateway = PaymentGateway()
+    
+    # Create the mapping once
+    price_to_product_map = await payment_gateway.create_price_to_product_mapping()
+    
+    customer_list = await payment_gateway.get_all_customers_and_log()
+    
+    for customer in customer_list:
+        subscription = await payment_gateway.get_customer_subscription(customer.customer_id)
+        
+        if subscription and subscription.plan_id in price_to_product_map:
+            mapping = price_to_product_map[subscription.plan_id]
+            
+            logger.info(f"Customer {customer.name}:")
+            logger.info(f"  - Subscribed to: {mapping['product_info']['name']}")
+            logger.info(f"  - Price: {mapping['price_info']['description']} - {mapping['price_info']['unit_price_amount']} {mapping['price_info']['unit_price_currency']}")
+            logger.info(f"  - Billing: {mapping['price_info']['billing_cycle']}")
+        else:
+            logger.info(f"Customer {customer.name} has no subscription or price not found")
+        
+        break
+        
         
 async def main():
     payment_gateway = PaymentGateway()
     customer_list = await payment_gateway.get_all_customers_and_log()
-    
+    products = await payment_gateway.list_products()
+    logger.info(f"products {products} ")
     # Process each customer's subscription validity
     for customer in customer_list:
         is_valid = await payment_gateway.is_subscription_valid(customer.customer_id)
         logger.info(f"Customer {customer.customer_id} subscription valid: {is_valid}")
         costumer_subscription = await payment_gateway.get_customer_subscription(customer.customer_id)
-        logger.info(f"costumer_subscription {customer.name} costumer_subscription: {costumer_subscription.subscription_id}")
-        payments = await payment_gateway.list_payments(customer.customer_id)
+        logger.info(f"costumer_name {customer.name} plan_name: {costumer_subscription.plan_name}")
+        payments = await payment_gateway.list_payments(customer.customer_id) 
         if payments:
             logger.info(f"payments {payments} ")
+        # customer = await payment_gateway.get_customer(customer.customer_id)
+        plan_details = await payment_gateway.get_subscription_with_plan_details(customer.customer_id)
+        logger.info(f"plan_details {plan_details} ")
+        break
         
 async def run_catalog_demo():
     """Demo function showing how to use your Paddle catalog"""
@@ -396,6 +512,7 @@ async def run_create_customer_test():
         
 
 if __name__ == "__main__":
-    # asyncio.run(main())
+    # Test functions
+    asyncio.run(main())
     # asyncio.run(run_create_customer_test())
-    asyncio.run(run_catalog_demo())
+    # asyncio.run(run_catalog_demo())

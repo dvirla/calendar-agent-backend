@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import pytz
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
-from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION, LOGFIRE_TOKEN
+from .config import AZURE_AI_API_KEY, AZURE_AI_O4_ENDPOINT, AZURE_API_VERSION, LOGFIRE_TOKEN, MODEL_TEMPRATURE
 from .models import CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .database import User
@@ -58,6 +58,9 @@ class CalendarAIAgent:
             model,
             deps_type=CalendarDependencies,
             result_type=AgentResponse,
+            model_settings={
+                "temperature": MODEL_TEMPRATURE,
+            },
             system_prompt="""You are an autonomous calendar assistant with the following capabilities:
 
 1. **Reading Calendar**: You can autonomously read the user's calendar to understand their schedule
