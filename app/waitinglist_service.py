@@ -94,12 +94,12 @@ class WaitlistManager:
         expected_headers = [
             'Timestamp', 'Email', 'Name', 'Interested Features', 'Primary Usage',
             'Scheduling Frustration', 'Current Calendar Tool', 'Role/Profession', 
-            'Company', 'Referral Source', 'UTM Source', 'Timezone',
+            'Journaling Experience', 'Company', 'Referral Source', 'UTM Source', 'Timezone',
             'Email Hash', 'Position', 'Status'
         ]
         
         if headers != expected_headers:
-            self.sheet.update('A1:O1', [expected_headers])
+            self.sheet.update('A1:P1', [expected_headers])
     
     def _validate_email(self, email: str) -> Dict[str, Any]:
         """Validate email format and domain"""
@@ -140,9 +140,9 @@ class WaitlistManager:
                 logger.info(f"No existing signup for {email}: sheet is empty")
                 return False
             
-            # Check column 13 (0-indexed 12) for email hash
+            # Check column 14 (0-indexed 13) for email hash
             for i, row in enumerate(all_values[1:], start=2):  # Skip header, start counting from row 2
-                if len(row) > 12 and row[12] == email_hash:
+                if len(row) > 13 and row[13] == email_hash:
                     logger.info(f"Found existing signup for {email} at row {i}")
                     return True
             
@@ -198,6 +198,7 @@ class WaitlistManager:
                 data['schedulingFrustration'],
                 data['currentCalendarTool'],
                 data['roleProfession'],
+                data['journalingExperience'],
                 data.get('company', ''),
                 data.get('referralSource', ''),
                 data.get('utmSource', ''),
@@ -268,150 +269,199 @@ class WaitlistManager:
             message["Subject"] = "🚀 Welcome to MemoMind AI - You're In!"
 
             # Create both plain text and HTML versions
-            text_body = f"""🚀 WELCOME TO MEMOMIND AI - YOU'RE IN! 🚀
+            text_body = f"""🧠 WELCOME TO MEMOMIND AI - YOU'RE IN! 🧠
 
-    Hi {name}! 👋
+            Hi {name}! 👋
 
-    Thank you for joining the MemoMind AI waitlist. You're position #{position} in line to access the AI-powered calendar assistant that will transform how you work, reflect, and achieve your goals.
+            Thank you for joining the MemoMind AI waitlist. You're position #{position} in line to access the AI reflection assistant that makes self-awareness effortless.
 
-    ✅ YOU'RE IN! ✅
-    Position #{position} • Early Access Secured
+            ✅ YOU'RE IN! ✅
+            Position #{position} • Early Access Secured
 
-    ═══════════════════════════════════════════════════════════════
+            ═══════════════════════════════════════════════════════════════
 
-    WHAT HAPPENS NEXT?
+            WHAT HAPPENS NEXT?
 
-    📧 We'll keep you updated on our launch progress
-    🎯 You'll get exclusive early access before our public release (Q2 2025)  
-    🏆 Be among the first 1,000 users to experience AI-driven productivity optimization
+            📧 We'll keep you updated on our launch progress
+            🎯 You'll get exclusive early access before our public release (March 2025)  
+            🏆 Be among the first 500 users to experience context-aware reflection
+            💰 Lock in 50% off forever ($3.50/month for life)
 
-    ═══════════════════════════════════════════════════════════════
+            ═══════════════════════════════════════════════════════════════
 
-    WHY YOU MADE THE RIGHT CHOICE
+            WHY YOU MADE THE RIGHT CHOICE
 
-    Most professionals lose 40% of their productive time to poor scheduling. MemoMind AI doesn't just organize your calendar—it analyzes your patterns, provides performance insights, and guides daily reflections to help you work smarter and achieve work-life balance.
+            92% of people abandon journaling within a week. Not because they lack discipline, but because staring at blank pages is terrible UX. MemoMind AI knows you had 4 meetings today and asks: "That back-to-back schedule looked draining - what would help you protect your energy better?"
 
-    Key Benefits:
-    🧠 AI-Powered Insights | 📊 Performance Analytics | ⚖️ Work-Life Balance
+            Key Benefits:
+            🤖 Context-Aware Questions | 📈 Pattern Recognition | ⚡ 90-Second Daily Habit
 
-    ═══════════════════════════════════════════════════════════════
+            ═══════════════════════════════════════════════════════════════
 
-    STAY CONNECTED
+            WHAT MAKES US DIFFERENT
 
-    Visit our website: https://memomindai.com
-    Questions? Just reply to this email—we read every message! 💬
+            ❌ Generic journaling apps: "How was your day?"
+            ✅ MemoMind AI: "You blocked focus time at 2pm but took calls instead. What would make deep work feel more protected?"
 
-    ═══════════════════════════════════════════════════════════════
+            No more blank page paralysis. Just intelligent prompts based on your actual schedule.
 
-    We're building something special, and having ambitious professionals like you on this journey means everything to us.
+            ═══════════════════════════════════════════════════════════════
 
-    Here's to optimizing your performance and achieving your biggest goals! 🎯
+            STAY CONNECTED
 
-    Best regards,
-    The MemoMind AI Team
+            Visit our website: https://memomindai.com
+            Questions? Just reply to this email—we read every message! 💬
 
-    P.S. Keep an eye on your inbox—we'll be sharing exclusive updates and productivity insights as we get closer to launch.
+            ═══════════════════════════════════════════════════════════════
 
-    ---
-    MemoMind AI - AI-Powered Calendar Optimization & Performance Insights
-    Website: https://memomindai.com
-    """
+            We're building the future of effortless reflection, and having self-aware professionals like you on this journey means everything to us.
+
+            Here's to making reflection a habit that actually sticks! 🎯
+
+            Best regards,
+            The MemoMind AI Team
+
+            P.S. Keep an eye on your inbox—we'll be sharing exclusive reflection insights and productivity patterns as we get closer to launch.
+
+            ---
+            MemoMind AI - AI Reflection Assistant That Reads Your Calendar
+            Website: https://memomindai.com
+            """
+
             html_body = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to MemoMind AI</title>
-    </head>
-    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        
-        <!-- Header -->
-        <div style="text-align: center; margin-bottom: 30px; padding: 20px; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); border-radius: 12px;">
-            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: bold;">🚀 Welcome to MemoMind AI!</h1>
-            <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 16px;">You're officially on the waitlist</p>
-        </div>
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Welcome to MemoMind AI</title>
+            </head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+                
+                <!-- Header -->
+                <div style="text-align: center; margin-bottom: 30px; padding: 20px; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); border-radius: 12px;">
+                    <h1 style="color: white; margin: 0; font-size: 24px; font-weight: bold;">🧠 Welcome to MemoMind AI!</h1>
+                    <p style="color: #e0e7ff; margin: 10px 0 0 0; font-size: 16px;">You're officially on the reflection waitlist</p>
+                </div>
 
-        <!-- Main Content -->
-        <div style="background: #f8fafc; padding: 25px; border-radius: 12px; margin-bottom: 20px;">
-            <h2 style="color: #1e293b; margin-top: 0;">Hi {name}! 👋</h2>
-            
-            <p style="font-size: 16px; margin-bottom: 20px;">
-                Thank you for joining the MemoMind AI waitlist. <strong>You're position #{position}</strong> in line to access the AI-powered calendar assistant that will transform how you work, reflect, and achieve your goals.
-            </p>
+                <!-- Main Content -->
+                <div style="background: #f8fafc; padding: 25px; border-radius: 12px; margin-bottom: 20px;">
+                    <h2 style="color: #1e293b; margin-top: 0;">Hi {name}! 👋</h2>
+                    
+                    <p style="font-size: 16px; margin-bottom: 20px;">
+                        Thank you for joining the MemoMind AI waitlist. <strong>You're position #{position}</strong> in line to access the AI reflection assistant that makes self-awareness effortless.
+                    </p>
 
-            <!-- Status Box -->
-            <div style="background: white; border: 2px solid #10b981; border-radius: 8px; padding: 15px; margin: 20px 0; text-align: center;">
-                <div style="color: #10b981; font-weight: bold; font-size: 18px;">✅ You're In!</div>
-                <div style="color: #6b7280; font-size: 14px; margin-top: 5px;">Position #{position} • Early Access Secured</div>
-            </div>
-        </div>
+                    <!-- Status Box -->
+                    <div style="background: white; border: 2px solid #10b981; border-radius: 8px; padding: 15px; margin: 20px 0; text-align: center;">
+                        <div style="color: #10b981; font-weight: bold; font-size: 18px;">✅ You're In!</div>
+                        <div style="color: #6b7280; font-size: 14px; margin-top: 5px;">Position #{position} • Early Access Secured</div>
+                    </div>
+                </div>
 
-        <!-- What's Next Section -->
-        <div style="margin-bottom: 25px;">
-            <h3 style="color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">What happens next?</h3>
-            <ul style="padding-left: 0; list-style: none;">
-                <li style="padding: 8px 0; border-left: 3px solid #3b82f6; padding-left: 12px; margin-bottom: 8px;">
-                    📧 We'll keep you updated on our launch progress
-                </li>
-                <li style="padding: 8px 0; border-left: 3px solid #8b5cf6; padding-left: 12px; margin-bottom: 8px;">
-                    🎯 You'll get exclusive early access before our public release (Q4 2025)
-                </li>
-                <li style="padding: 8px 0; border-left: 3px solid #10b981; padding-left: 12px; margin-bottom: 8px;">
-                    🏆 Be among the first 1,000 users to experience AI-driven productivity optimization
-                </li>
-            </ul>
-        </div>
+                <!-- What's Next Section -->
+                <div style="margin-bottom: 25px;">
+                    <h3 style="color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">What happens next?</h3>
+                    <ul style="padding-left: 0; list-style: none;">
+                        <li style="padding: 8px 0; border-left: 3px solid #3b82f6; padding-left: 12px; margin-bottom: 8px;">
+                            📧 We'll keep you updated on our launch progress
+                        </li>
+                        <li style="padding: 8px 0; border-left: 3px solid #8b5cf6; padding-left: 12px; margin-bottom: 8px;">
+                            🎯 You'll get exclusive early access before our public release (March 2025)
+                        </li>
+                        <li style="padding: 8px 0; border-left: 3px solid #10b981; padding-left: 12px; margin-bottom: 8px;">
+                            🏆 Be among the first 500 users to experience context-aware reflection
+                        </li>
+                        <li style="padding: 8px 0; border-left: 3px solid #f59e0b; padding-left: 12px; margin-bottom: 8px;">
+                            💰 Lock in 50% off forever ($3.50/month for life)
+                        </li>
+                    </ul>
+                </div>
 
-        <!-- Value Proposition -->
-        <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-            <h3 style="color: #1e293b; margin-top: 0;">Why you made the right choice</h3>
-            <p style="margin-bottom: 15px;">
-                Most professionals lose <strong>40% of their productive time</strong> to poor scheduling. MemoMind AI doesn't just organize your calendar—it analyzes your patterns, provides performance insights, and guides daily reflections to help you work smarter and achieve work-life balance.
-            </p>
-            
-            <!-- Key Benefits -->
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
-                <span style="background: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;">🧠 AI-Powered Insights</span>
-                <span style="background: #f3e8ff; color: #7c3aed; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;">📊 Performance Analytics</span>
-                <span style="background: #dcfce7; color: #166534; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;">⚖️ Work-Life Balance</span>
-            </div>
-        </div>
+                <!-- Problem/Solution Section -->
+                <div style="background: linear-gradient(135deg, #fef3c7 0%, #fed7aa 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px; border-left: 4px solid #f59e0b;">
+                    <h3 style="color: #92400e; margin-top: 0;">Why you made the right choice</h3>
+                    <p style="margin-bottom: 15px; color: #78350f;">
+                        <strong>92% of people abandon journaling within a week.</strong> Not because they lack discipline, but because staring at blank pages is terrible UX.
+                    </p>
+                    <p style="margin-bottom: 15px; color: #78350f;">
+                        MemoMind AI knows you had 4 meetings today and asks: <em>"That back-to-back schedule looked draining - what would help you protect your energy better?"</em>
+                    </p>
+                </div>
 
-        <!-- Call to Action -->
-        <div style="text-align: center; margin: 30px 0;">
-            <p style="color: #6b7280; margin-bottom: 15px;">Stay connected with us:</p>
-            <div style="margin-bottom: 20px;">
-                <a href="https://memomindai.com" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: 500; margin: 0 5px;">Visit Our Website</a>
-            </div>
-            <p style="color: #6b7280; font-size: 14px;">
-                Questions? Just reply to this email—we read every message! 💬
-            </p>
-        </div>
+                <!-- Value Proposition -->
+                <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                    <h3 style="color: #1e293b; margin-top: 0;">What makes us different</h3>
+                    
+                    <!-- Comparison -->
+                    <div style="margin-bottom: 20px;">
+                        <div style="background: #fef2f2; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #ef4444;">
+                            <span style="color: #dc2626; font-weight: bold;">❌ Generic journaling apps:</span>
+                            <span style="color: #7f1d1d;">"How was your day?"</span>
+                        </div>
+                        <div style="background: #f0fdf4; padding: 12px; border-radius: 8px; border-left: 4px solid #22c55e;">
+                            <span style="color: #16a34a; font-weight: bold;">✅ MemoMind AI:</span>
+                            <span style="color: #15803d;">"You blocked focus time at 2pm but took calls instead. What would make deep work feel more protected?"</span>
+                        </div>
+                    </div>
+                    
+                    <p style="text-align: center; font-weight: bold; color: #6366f1; font-style: italic;">
+                        No more blank page paralysis. Just intelligent prompts based on your actual schedule.
+                    </p>
+                    
+                    <!-- Key Benefits -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; justify-content: center;">
+                        <span style="background: #dbeafe; color: #1e40af; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;">🤖 Context-Aware Questions</span>
+                        <span style="background: #f3e8ff; color: #7c3aed; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;">📈 Pattern Recognition</span>
+                        <span style="background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;">⚡ 90-Second Daily Habit</span>
+                    </div>
+                </div>
 
-        <!-- Closing -->
-        <div style="background: #1e293b; color: white; padding: 20px; border-radius: 12px; text-align: center;">
-            <p style="margin: 0; font-size: 16px;">
-                We're building something special, and having ambitious professionals like you on this journey means everything to us.
-            </p>
-            <p style="margin: 15px 0 0 0; font-weight: bold; font-size: 18px; background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-                Here's to optimizing your performance and achieving your biggest goals! 🎯
-            </p>
-        </div>
+                <!-- Early Access Benefits -->
+                <div style="background: #1e293b; color: white; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                    <h3 style="color: #60a5fa; margin-top: 0;">🎯 Your Early Access Benefits</h3>
+                    <ul style="list-style: none; padding-left: 0;">
+                        <li style="margin-bottom: 8px;">✅ <strong>50% off forever</strong> - Lock in $3.50/month for life</li>
+                        <li style="margin-bottom: 8px;">✅ <strong>2 weeks early access</strong> before public launch</li>
+                        <li style="margin-bottom: 8px;">✅ <strong>Direct feedback line</strong> to founders</li>
+                        <li style="margin-bottom: 8px;">✅ <strong>Shape the product</strong> roadmap</li>
+                    </ul>
+                </div>
 
-        <!-- Footer -->
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #6b7280; font-size: 12px;">
-            <p style="margin: 0;">
-                <strong>MemoMind AI</strong> - AI-Powered Calendar Optimization & Performance Insights<br>
-                <a href="https://memomindai.com" style="color: #3b82f6; text-decoration: none;">memomindai.com</a>
-            </p>
-            <p style="margin: 10px 0 0 0; font-style: italic;">
-                P.S. Keep an eye on your inbox—we'll be sharing exclusive updates and productivity insights as we get closer to launch.
-            </p>
-        </div>
-    </body>
-    </html>
-    """
+                <!-- Call to Action -->
+                <div style="text-align: center; margin: 30px 0;">
+                    <p style="color: #6b7280; margin-bottom: 15px;">Stay connected with us:</p>
+                    <div style="margin-bottom: 20px;">
+                        <a href="https://memomindai.com" style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; padding: 12px 24px; text-decoration: none; border-radius: 25px; font-weight: 500; margin: 0 5px;">Visit Our Website</a>
+                    </div>
+                    <p style="color: #6b7280; font-size: 14px;">
+                        Questions? Just reply to this email—we read every message! 💬
+                    </p>
+                </div>
+
+                <!-- Closing -->
+                <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; padding: 20px; border-radius: 12px; text-align: center;">
+                    <p style="margin: 0; font-size: 16px;">
+                        We're building the future of effortless reflection, and having self-aware professionals like you on this journey means everything to us.
+                    </p>
+                    <p style="margin: 15px 0 0 0; font-weight: bold; font-size: 18px;">
+                        Here's to making reflection a habit that actually sticks! 🎯
+                    </p>
+                </div>
+
+                <!-- Footer -->
+                <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #6b7280; font-size: 12px;">
+                    <p style="margin: 0;">
+                        <strong>MemoMind AI</strong> - AI Reflection Assistant That Reads Your Calendar<br>
+                        <a href="https://memomindai.com" style="color: #3b82f6; text-decoration: none;">memomindai.com</a>
+                    </p>
+                    <p style="margin: 10px 0 0 0; font-style: italic;">
+                        P.S. Keep an eye on your inbox—we'll be sharing exclusive reflection insights and productivity patterns as we get closer to launch.
+                    </p>
+                </div>
+            </body>
+            </html>
+            """
 
             # Attach both versions
             part1 = MIMEText(text_body, "plain")
@@ -479,8 +529,8 @@ class WaitlistManager:
             last_signup_timestamp = None
             
             for i, row in enumerate(data_rows):
-                if len(row) >= 8:  # Ensure we have enough columns
-                    # Role is in column 7 (0-indexed)
+                if len(row) >= 9:  # Ensure we have enough columns
+                    # Role is in column 8 (0-indexed)
                     role = row[7] if row[7] else 'Unknown'
                     roles[role] = roles.get(role, 0) + 1
                     
