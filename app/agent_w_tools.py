@@ -378,43 +378,6 @@ Keep responses conversational. Use tools for all schedule information."""
                 }
             except Exception as e:
                 return {"error": f"Could not analyze schedule: {str(e)}"}
-        
-        @self.agent.tool
-        async def create_reflection(ctx: RunContext[CalendarDependencies]) -> Dict[str, Any]:
-            """Create a weekly reflection based on the user's conversations and activities"""
-            try:
-                from .database_utils import ConversationService
-                
-                # Get conversations from the past week
-                week_ago = self._get_current_time() - timedelta(days=7)
-                conversations = ConversationService.get_user_conversations_since(ctx.deps.db, ctx.deps.user_id, week_ago)
-                
-                if not conversations:
-                    return {"message": "No conversations found in the past week to reflect on"}
-                
-                # Get events from the past week for context
-                past_events = ctx.deps.calendar_service.get_events(days_ahead=0, days_back=7)
-                
-                conversation_count = len(conversations)
-                total_messages = sum(len(ConversationService.get_conversation_messages(ctx.deps.db, conv.id)) for conv in conversations)
-                
-                reflection = {
-                    "period": "Past 7 days",
-                    "conversation_count": conversation_count,
-                    "total_messages": total_messages,
-                    "events_attended": len(past_events),
-                    "reflection": f"This week you had {conversation_count} conversations with me and attended {len(past_events)} calendar events. Based on your activity, here are some insights for the week ahead.",
-                    "suggestions": [
-                        "Review your most productive conversation topics",
-                        "Consider scheduling focused work blocks based on your patterns",
-                        "Reflect on which activities brought you the most value",
-                        "Summarize the topics you discussed and how they relate to your goals"
-                    ]
-                }
-                
-                return reflection
-            except Exception as e:
-                return {"error": f"Could not create weekly reflection: {str(e)}"}
     
     async def chat(self, message: str, user_id: Optional[str] = None, conversation_id: Optional[int] = None) -> AgentResponse:
         """Chat with the autonomous AI agent"""
