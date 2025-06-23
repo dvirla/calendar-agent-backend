@@ -20,26 +20,7 @@ from .models import CalendarEvent
 from .calendar_service import GoogleCalendarService
 from .database import User
 from .database_utils import PendingActionService
-
-class AgentResponse(BaseModel):
-    message: str
-    pending_actions: Optional[List[Dict[str, Any]]] = None
-    requires_approval: Optional[bool] = False
-
-class PendingAction(BaseModel):
-    action_id: str
-    action_type: str  # "create_event", "update_event", "delete_event"
-    description: str
-    details: Dict[str, Any]
-
-@dataclass
-class CalendarDependencies:
-    calendar_service: GoogleCalendarService
-    user_id: int
-    user: User
-    db: Session
-    pending_actions: Optional[List[PendingAction]] = None
-
+from .agent_dataclasses import AgentResponse, CalendarDependencies
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
 logfire.instrument_pydantic_ai()  
