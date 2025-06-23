@@ -49,6 +49,7 @@ class WaitlistSignup(BaseModel):
     schedulingFrustration: str  # free text
     currentCalendarTool: str  # "Google Calendar", "Outlook", "Apple Calendar", "Notion", "Pen and Paper", "other (explain)"
     roleProfession: str  # "Entrepreneur/Founder", "Manager/Executive", "Consultant/Freelancer", "Developer/Designer", "Sales/Marketing", "Student", "Other (explain)"
+    journalingExperience: str  # "Yes, but quit after a few days", "Yes, still do it sometimes", "No, seems too time-consuming", "No, don't know what to write"
     company: str = ""
     referralSource: str = ""
     utmSource: str = ""
