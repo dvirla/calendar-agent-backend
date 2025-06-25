@@ -33,7 +33,7 @@ class BaseAgent:
         self.db = db
         self.timezone = getattr(calendar_service, 'timezone', pytz.UTC)
         
-        model = OpenAIModel(
+        self.model = OpenAIModel(
             AZURE_MODEL_NAME,
             provider=AzureProvider(
                 azure_endpoint=AZURE_AI_O4_ENDPOINT,
@@ -43,7 +43,7 @@ class BaseAgent:
         )
         
         self.agent = Agent(
-            model,
+            self.model,
             deps_type=CalendarDependencies,
             output_type=AgentResponse,
             model_settings={"temperature": MODEL_TEMPRATURE},

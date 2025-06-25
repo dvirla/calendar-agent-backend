@@ -1,12 +1,14 @@
-from pydantic_ai import RunContext
+from pydantic_ai import RunContext, Agent
 from typing import Dict, Any
 from datetime import datetime, timedelta
 import pytz
 from .base_agent import BaseAgent
 from .agent_dataclasses import CalendarDependencies
 import logfire
-from .config import LOGFIRE_TOKEN
+from .config import LOGFIRE_TOKEN, MODEL_TEMPRATURE
 import logging
+from .agent_dataclasses import AgentResponse, CalendarDependencies
+
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -22,33 +24,39 @@ class ReflectionAgent(BaseAgent):
 
     def __init__(self, calendar_service, user_id, user, db):
         self.calendar_service = calendar_service
-        self.user_id = user_id
-        self.user = user
-        self.db = db
         self.timezone = getattr(calendar_service, "timezone", pytz.UTC)
+        
         system_prompt = f"""You are a reflection and insights assistant. Current date/time: {self._get_current_time()}
 
-## Core Purpose
-- **Analyze**: Review user's activities, conversations, and patterns
-- **Reflect**: Generate thoughtful questions and insights about productivity and well-being
-- **Guide**: Offer personalized suggestions for improvement and growth
+        ## Core Purpose
+        - **Analyze**: Review user's activities, conversations, and patterns
+        - **Reflect**: Generate thoughtful questions and insights about productivity and well-being
+        - **Guide**: Offer personalized suggestions for improvement and growth
 
-## Rules
-1. Focus on meaningful insights, not just data summaries
-2. Ask thoughtful questions that promote self-reflection
-3. Connect patterns across different time periods
-4. Provide actionable suggestions for improvement
-5. Be empathetic and encouraging in tone
+        ## Rules
+        1. Focus on meaningful insights, not just data summaries
+        2. Ask thoughtful questions that promote self-reflection
+        3. Connect patterns across different time periods
+        4. Provide actionable suggestions for improvement
+        5. Be empathetic and encouraging in tone
 
-## Available Tools
-- get_calendar_events: Access historical and upcoming events
-- get_events_for_date: Review specific day activities
-- search_calendar_events: Find patterns in event types
-- summarize_conversations: Summarize recent conversations with insights
+        ## Available Tools
+        - get_calendar_events: Access historical and upcoming events
+        - get_events_for_date: Review specific day activities
+        - search_calendar_events: Find patterns in event types
+        - summarize_conversations: Summarize recent conversations with insights
 
-Keep responses thoughtful and focused on personal growth."""
-
+        Keep responses thoughtful and focused on personal growth."""
+        
         super().__init__(calendar_service, user_id, user, db, system_prompt)
+        
+        self.summery_agent = Agent(
+            self.model,
+            deps_type=CalendarDependencies,
+            output_type=AgentResponse,
+            model_settings={"temperature": MODEL_TEMPRATURE},
+        )
+
         self._register_reflection_tools()
 
     def _register_reflection_tools(self):
@@ -97,9 +105,7 @@ Keep responses thoughtful and focused on personal growth."""
                     conversation_data.append(conversation_summary)
 
                 # Use the agent to create summaries
-                summary_prompt = f"Analyze and summarize these {len(conversations)} conversations from the past"
-                + f" {days} days. For each conversation, provide a concise summary "
-                + f"highlighting key topics, decisions, and outcomes: {conversation_data}"
+                summary_prompt = f"Analyze and summarize these {len(conversations)} conversations from the past {days} days. For each conversation, provide a concise summary highlighting key topics, decisions, and outcomes: {conversation_data}"
                 deps = CalendarDependencies(
                     calendar_service=ctx.deps.calendar_service,
                     user_id=ctx.deps.user_id,
@@ -107,7 +113,7 @@ Keep responses thoughtful and focused on personal growth."""
                     db=ctx.deps.db,
                     pending_actions=[],
                 )
-                result = await self.agent.run(summary_prompt, deps=deps)
+                result = await self.summery_agent.run(summary_prompt, deps=deps)
                 return {
                     "period": f"Past {days} days",
                     "conversation_count": len(conversations),

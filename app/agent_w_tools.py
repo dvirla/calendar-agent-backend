@@ -70,7 +70,6 @@ class CalendarAIAgent:
 - propose_calendar_event: Create new event (needs approval)
 - get_free_time_slots: Find available times
 - analyze_schedule_patterns: Analyze scheduling patterns (supports historical analysis)
-- create_reflection: Generate a reflection based on conversations and activities
 
 Keep responses conversational. Use tools for all schedule information."""
         )
