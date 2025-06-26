@@ -24,6 +24,8 @@ from .config import (
 from .verification_service import VerificationService
 import logfire
 from .waitinglist_service import WaitlistManager
+from .reflection_agent import ReflectionAgent
+from .agent_factory import AgentFactory, AgentType
 
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
@@ -178,7 +180,13 @@ async def chat_with_agent(
         
         # Initialize user-specific services
         calendar_service = GoogleCalendarService(credentials)
-        ai_agent = CalendarAIAgent(calendar_service, current_user.id, current_user, db)
+        ai_agent = AgentFactory.create_agent(
+            AgentType.CALENDAR, 
+            calendar_service, 
+            current_user.id, 
+            current_user, 
+            db
+        )
         
         # Create or get conversation (use most recently created, not updated)
         conversations = db.query(Conversation).filter(Conversation.user_id == current_user.id).order_by(Conversation.created_at.desc()).all()
@@ -229,8 +237,13 @@ async def approve_action(
         
         # Initialize user-specific services
         calendar_service = GoogleCalendarService(credentials)
-        ai_agent = CalendarAIAgent(calendar_service, current_user.id, current_user, db)
-        
+        ai_agent = AgentFactory.create_agent(
+            AgentType.CALENDAR, 
+            calendar_service, 
+            current_user.id, 
+            current_user, 
+            db
+        )
         result = await ai_agent.approve_action(action_id)
         return result
     except Exception as e:
@@ -260,8 +273,13 @@ async def reject_action(
         else:
             calendar_service = GoogleCalendarService()
         
-        ai_agent = CalendarAIAgent(calendar_service, current_user.id, current_user, db)
-        
+        ai_agent = AgentFactory.create_agent(
+            AgentType.CALENDAR, 
+            calendar_service, 
+            current_user.id, 
+            current_user, 
+            db
+        )
         result = await ai_agent.reject_action(action_id)
         return result
     except Exception as e:
@@ -362,6 +380,7 @@ async def get_reflection_prompt(
 ):
     """Get an autonomous daily reflection prompt"""
     try:
+        logfire.info(f"User {current_user.id} requested daily reflection prompt")
         # Get user's calendar credentials
         credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
         if credentials_dict:
@@ -375,15 +394,85 @@ async def get_reflection_prompt(
             )
             
             calendar_service = GoogleCalendarService(credentials)
-            ai_agent = CalendarAIAgent(calendar_service, current_user.id, current_user, db)
+            ai_agent = AgentFactory.create_agent(
+                AgentType.REFLECTION, 
+                calendar_service, 
+                current_user.id, 
+                current_user, 
+                db
+            )
             
-            prompt = await ai_agent.daily_reflection_prompt()
+            prompt = await ai_agent.generate_weekly_insights()
+            logfire.info(f"Generated reflection prompt for user {current_user.id}: {prompt}")
             return {"prompt": prompt}
         else:
             return {"prompt": "How was your day today? What did you accomplish?"}
     except Exception as e:
+        logfire.error(f"Error: {e}")
         return {"prompt": "How was your day today? What did you accomplish?", "error": str(e)}
 
+@app.post("/reflection/chat", response_model=ChatResponse)
+async def chat_with_reflection_agent(
+    message: ChatMessage, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Chat with the reflection AI agent for insights and personal growth"""
+    try:
+        verification_result = verification_service.validate_user_input(message.message, current_user.id)
+        logfire.info(f"User {current_user.id}, reflection chat verification_result: {verification_result}")
+        if not verification_result['valid']:
+            return ChatResponse(
+                response=verification_result['error'],
+                suggested_actions=None,
+                pending_actions=None,
+                requires_approval=None
+            )
+        
+        # Get user's calendar credentials
+        credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
+        if not credentials_dict:
+            raise HTTPException(status_code=400, detail="Calendar not connected. Please authenticate first.")
+        # Create credentials object
+        credentials = Credentials(
+            token=credentials_dict['token'],
+            refresh_token=credentials_dict['refresh_token'],
+            token_uri=credentials_dict['token_uri'],
+            client_id=credentials_dict['client_id'],
+            client_secret=credentials_dict['client_secret'],
+            scopes=credentials_dict['scopes']
+        )
+        # Initialize user-specific services with reflection agent
+        calendar_service = GoogleCalendarService(credentials)
+        reflection_agent = AgentFactory.create_agent(
+            AgentType.REFLECTION, 
+            calendar_service, 
+            current_user.id, 
+            current_user, 
+            db
+        )
+        # Create or get conversation (use most recently created, not updated)
+        conversations = db.query(Conversation).filter(Conversation.user_id == current_user.id).order_by(Conversation.created_at.desc()).all()
+        if not conversations:
+            conversation = ConversationService.create_conversation(db, current_user.id, "Reflection Chat Session")
+        else:
+            conversation = conversations[0]  # Use most recently created conversation
+        # Save user message
+        ConversationService.add_message(db, conversation.id, message.message, "user")
+        # Get reflection agent response with conversation history
+        response = await reflection_agent.chat(message.message, str(current_user.id), conversation.id)
+        # Save agent response
+        ConversationService.add_message(db, conversation.id, response.message, "assistant")
+        
+        return ChatResponse(
+            response=response.message,
+            suggested_actions=None,
+            pending_actions=response.pending_actions,
+            requires_approval=response.requires_approval
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
 # User management endpoints
 @app.get("/user/profile")
 async def get_user_profile(current_user: User = Depends(get_current_user)):
@@ -482,8 +571,13 @@ async def test_agent_tools(
         )
         
         calendar_service = GoogleCalendarService(credentials)
-        ai_agent = CalendarAIAgent(calendar_service, current_user.id, current_user, db)
-        
+        ai_agent = AgentFactory.create_agent(
+            AgentType.CALENDAR, 
+            calendar_service, 
+            current_user.id, 
+            current_user, 
+            db
+        )
         test_messages = [
             "What's on my schedule today?",
             "Can you help me find a free hour tomorrow afternoon?",
