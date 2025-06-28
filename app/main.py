@@ -26,7 +26,7 @@ import logfire
 from .waitinglist_service import WaitlistManager
 from .reflection_agent import ReflectionAgent
 from .agent_factory import AgentFactory, AgentType
-
+from .main_agent import MainAgent
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
 logfire.instrument_pydantic_ai() 
@@ -180,8 +180,7 @@ async def chat_with_agent(
         
         # Initialize user-specific services
         calendar_service = GoogleCalendarService(credentials)
-        ai_agent = AgentFactory.create_agent(
-            AgentType.CALENDAR, 
+        ai_agent = MainAgent(
             calendar_service, 
             current_user.id, 
             current_user, 
@@ -237,8 +236,7 @@ async def approve_action(
         
         # Initialize user-specific services
         calendar_service = GoogleCalendarService(credentials)
-        ai_agent = AgentFactory.create_agent(
-            AgentType.CALENDAR, 
+        ai_agent = MainAgent(
             calendar_service, 
             current_user.id, 
             current_user, 
@@ -273,8 +271,7 @@ async def reject_action(
         else:
             calendar_service = GoogleCalendarService()
         
-        ai_agent = AgentFactory.create_agent(
-            AgentType.CALENDAR, 
+        ai_agent = MainAgent(
             calendar_service, 
             current_user.id, 
             current_user, 
@@ -393,13 +390,12 @@ async def get_reflection_prompt(
             )
             
             calendar_service = GoogleCalendarService(credentials)
-            ai_agent = AgentFactory.create_agent(
-                AgentType.REFLECTION, 
-                calendar_service, 
-                current_user.id, 
-                current_user, 
-                db
-            )
+            ai_agent = MainAgent(
+            calendar_service, 
+            current_user.id, 
+            current_user, 
+            db
+        )
             
             prompt = await ai_agent.generate_weekly_insights()
             return {"prompt": prompt}
@@ -438,8 +434,7 @@ async def chat_with_reflection_agent(
             scopes=credentials_dict['scopes']
         )
         calendar_service = GoogleCalendarService(credentials)
-        reflection_agent = AgentFactory.create_agent(
-            AgentType.REFLECTION, 
+        ai_agent = MainAgent(
             calendar_service, 
             current_user.id, 
             current_user, 
@@ -451,8 +446,7 @@ async def chat_with_reflection_agent(
         else:
             conversation = conversations[0]  # Use most recently created conversation
         ConversationService.add_message(db, conversation.id, message.message, "user")
-        #TODO: Consider a decision making between reflection to calender to reflection agent
-        response = await reflection_agent.chat(message.message, str(current_user.id), conversation.id)
+        response = await ai_agent.chat(message.message, str(current_user.id), conversation.id)
         ConversationService.add_message(db, conversation.id, response.message, "assistant")
         
         return ChatResponse(
@@ -562,8 +556,7 @@ async def test_agent_tools(
         )
         
         calendar_service = GoogleCalendarService(credentials)
-        ai_agent = AgentFactory.create_agent(
-            AgentType.CALENDAR, 
+        ai_agent = MainAgent(
             calendar_service, 
             current_user.id, 
             current_user, 
