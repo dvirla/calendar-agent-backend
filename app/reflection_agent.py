@@ -132,8 +132,8 @@ class ReflectionAgent(BaseAgent):
                 logger.error(f"Error summarizing conversations: {str(e)}")
                 return {"error": f"Could not summarize conversations: {str(e)}"}
 
-    async def generate_weekly_insights(self) -> str:
-        """Generate weekly insights and reflection prompts"""
+    async def generate_insights(self, days: int = 7) -> str:
+        """Generate insights and reflection prompts for a custom time period"""
         try:
             current_pending_actions = []
             deps = CalendarDependencies(
@@ -143,11 +143,23 @@ class ReflectionAgent(BaseAgent):
                 db=self.db,
                 pending_actions=current_pending_actions,
             )
+            
+            # Create a dynamic prompt based on the time period
+            if days == 1:
+                prompt = f"Create a comprehensive summary and reflection for today's conversations, activities, and calendar events. Analyze patterns, productivity insights, and suggest improvements based on both your conversations and scheduled activities."
+            elif days == 7:
+                prompt = f"Create a comprehensive weekly summary for every conversation, reflection, and calendar event in the last 7 days. Include analysis of time allocation, meeting patterns, productivity trends, and personal growth insights from both conversations and scheduled activities."
+            elif days == 30:
+                prompt = f"Create a comprehensive monthly summary for every conversation, reflection, and calendar event in the last 30 days. Provide deep insights into productivity patterns, time management effectiveness, recurring themes in conversations and meetings, and long-term growth opportunities."
+            else:
+                prompt = f"Create a comprehensive summary for every conversation, reflection, and calendar event in the last {days} days. Analyze patterns between your conversations and scheduled activities, identify productivity insights, and suggest improvements for better time management and personal growth."
+            
             result = await self.agent.run(
-                "Create a comprehensive summery for every conversation in the last 7 days",
+                prompt,
                 deps=deps,
             )
 
             return result.output.message
         except Exception as e:
-            return f"Error generating insights: {str(e)}"
+            return f"Error generating insights for {days} days: {str(e)}"
+    
