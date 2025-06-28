@@ -121,8 +121,8 @@ class MainAgent:
         )
         return await calendar_agent.reject_action(action_id)
     
-    async def generate_weekly_insights(self) -> str:
-        """Generate weekly insights - delegate to reflection agent"""
+    async def generate_insights(self, days: int = 7) -> str:
+        """Generate insights for a custom time period - delegate to reflection agent"""
         from .agent_factory import AgentFactory, AgentType
         reflection_agent = AgentFactory.create_agent(
             AgentType.REFLECTION,
@@ -131,4 +131,5 @@ class MainAgent:
             self.user,
             self.db
         )
-        return await reflection_agent.generate_weekly_insights()
+        return await reflection_agent.generate_insights(days)
+    

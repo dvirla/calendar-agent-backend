@@ -396,8 +396,8 @@ async def get_reflection_prompt(
             current_user, 
             db
         )
-            
-            prompt = await ai_agent.generate_weekly_insights()
+            #TODO: make it costume time period
+            prompt = await ai_agent.generate_insights()
             return {"prompt": prompt}
         else:
             return {"prompt": "How was your day today? What did you accomplish?"}
