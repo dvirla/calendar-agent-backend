@@ -38,14 +38,16 @@ class MainAgent:
             Available agents:
             1. CALENDAR - Handles calendar operations, scheduling, event management, availability checking
             2. REFLECTION - Handles personal reflection, insights, journaling, goal tracking, and self-improvement
+            3. PROFILE - Handles user profile updates, preferences, and personal information extraction
             
             Based on the user's message, determine which agent should handle the request.
             
             Rules:
             - If the user is asking about calendar events, scheduling, meetings, appointments, or time management -> CALENDAR
-            - If the user is asking about reflection, insights, journaling, goals, personal growth, or self-improvement -> REFLECTION
+            - If the user is asking about reflection, insights, journaling, goal tracking, or self-improvement -> REFLECTION
+            - If the user is asking about updating profile, setting goals, preferences, or personal information -> PROFILE
             - If the message is ambiguous or could be either, prefer CALENDAR as the default
-            - Respond with only the agent type: either "CALENDAR" or "REFLECTION"
+            - Respond with only the agent type: either "CALENDAR", "REFLECTION", or "PROFILE"
             """,
             # deps_type=None
         )
@@ -67,6 +69,8 @@ class MainAgent:
                 agent_type = AgentType.CALENDAR
             elif chosen_agent_type == "REFLECTION":
                 agent_type = AgentType.REFLECTION
+            elif chosen_agent_type == "PROFILE":
+                agent_type = AgentType.PROFILE
             else:
                 # Default to calendar if unclear
                 agent_type = AgentType.CALENDAR

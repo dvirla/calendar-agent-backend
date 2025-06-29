@@ -5,11 +5,12 @@ from .reflection_agent import ReflectionAgent
 from .calendar_service import GoogleCalendarService
 from .database import User
 from sqlalchemy.orm import Session
-
+from .profile_agent import ProfileAgent
 
 class AgentType(Enum):
     CALENDAR = "calendar"
     REFLECTION = "reflection"
+    PROFILE = "profile"
 
 
 class AgentFactory:
@@ -22,13 +23,15 @@ class AgentFactory:
         user_id: int,
         user: User,
         db: Session
-    ) -> Union[CalendarAgent, ReflectionAgent]:
+    ) -> Union[CalendarAgent, ReflectionAgent, ProfileAgent]:
         """Create an agent of the specified type"""
         
         if agent_type == AgentType.CALENDAR:
             return CalendarAgent(calendar_service, user_id, user, db)
         elif agent_type == AgentType.REFLECTION:
             return ReflectionAgent(calendar_service, user_id, user, db)
+        elif agent_type == AgentType.PROFILE:
+            return ProfileAgent(calendar_service, user_id, user, db)
         else:
             raise ValueError(f"Unknown agent type: {agent_type}")
     

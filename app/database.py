@@ -26,6 +26,7 @@ class User(Base):
     google_id = Column(String, unique=True, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    profile = relationship("UserProfile", back_populates="user", uselist=False)
     
     # Relationships
     conversations = relationship("Conversation", back_populates="user")
@@ -96,6 +97,32 @@ class Reflection(Base):
 
     # Relationships
     user = relationship("User", back_populates="reflections")
+    
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    
+    # Personal goals and preferences
+    short_term_goals = Column(JSON, nullable=True)  # List of goals for next 1-3 months
+    long_term_goals = Column(JSON, nullable=True)   # List of goals for 6+ months
+    work_preferences = Column(JSON, nullable=True)  # Work style, peak hours, etc.
+    personal_interests = Column(JSON, nullable=True) # Hobbies, interests
+    
+    # Reflection preferences
+    reflection_frequency = Column(String, default="weekly")  # daily, weekly, monthly
+    reflection_focus_areas = Column(JSON, nullable=True)     # productivity, wellness, growth
+    
+    # Communication style
+    communication_tone = Column(String, default="professional") # casual, professional, encouraging
+    preferred_insights = Column(JSON, nullable=True)  # types of insights user wants
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="profile")
 
 
 if __name__ == "__main__":
