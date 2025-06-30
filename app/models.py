@@ -73,3 +73,30 @@ class EmailCheck(BaseModel):
 
 class EmailCheckResponse(BaseModel):
     exists: bool
+
+class UserProfileUpdate(BaseModel):
+    short_term_goals: Optional[List[str]] = None
+    long_term_goals: Optional[List[str]] = None
+    work_preferences: Optional[Dict[str, Any]] = None
+    personal_interests: Optional[List[str]] = None
+    reflection_frequency: Optional[str] = None  # daily, weekly, monthly
+    reflection_focus_areas: Optional[List[str]] = None
+    communication_tone: Optional[str] = None  # casual, professional, encouraging
+    preferred_insights: Optional[List[str]] = None
+
+class UserProfileResponse(BaseModel):
+    id: int
+    user_id: int
+    short_term_goals: Optional[List[str]] = None
+    long_term_goals: Optional[List[str]] = None
+    work_preferences: Optional[Dict[str, Any]] = None
+    personal_interests: Optional[List[str]] = None
+    reflection_frequency: str = "weekly"
+    reflection_focus_areas: Optional[List[str]] = None
+    communication_tone: str = "professional"
+    preferred_insights: Optional[List[str]] = None
+    created_at: datetime
+    updated_at: datetime
+
+class ProfileUpdateRequest(BaseModel):
+    message: str  # Natural language request to update profile

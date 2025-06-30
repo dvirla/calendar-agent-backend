@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .database import SessionLocal, User, Conversation, Message, CalendarConnection, PendingAction
+from .database import SessionLocal, User, Conversation, Message, CalendarConnection, PendingAction, UserProfile
 from typing import Optional, List, Dict, Any
 import json
 from cryptography.fernet import Fernet
@@ -177,3 +177,72 @@ class PendingActionService:
         
         if expired_actions:
             db.commit()
+
+class UserProfileService:
+    """Service for managing user profiles and preferences"""
+    
+    @staticmethod
+    def get_user_profile(db: Session, user_id: int) -> Optional[UserProfile]:
+        """Get user profile by user ID"""
+        return db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    
+    @staticmethod
+    def create_user_profile(db: Session, user_id: int, profile_data: Dict[str, Any]) -> UserProfile:
+        """Create a new user profile"""
+        profile = UserProfile(
+            user_id=user_id,
+            short_term_goals=profile_data.get("short_term_goals", []),
+            long_term_goals=profile_data.get("long_term_goals", []),
+            work_preferences=profile_data.get("work_preferences", {}),
+            personal_interests=profile_data.get("personal_interests", []),
+            reflection_frequency=profile_data.get("reflection_frequency", "weekly"),
+            reflection_focus_areas=profile_data.get("reflection_focus_areas", []),
+            communication_tone=profile_data.get("communication_tone", "professional"),
+            preferred_insights=profile_data.get("preferred_insights", [])
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+        return profile
+    
+    @staticmethod
+    def update_user_profile(db: Session, user_id: int, profile_data: Dict[str, Any]) -> Optional[UserProfile]:
+        """Update existing user profile"""
+        profile = UserProfileService.get_user_profile(db, user_id)
+        
+        if not profile:
+            # Create new profile if it doesn't exist
+            return UserProfileService.create_user_profile(db, user_id, profile_data)
+        
+        # Update only provided fields
+        if "short_term_goals" in profile_data:
+            profile.short_term_goals = profile_data["short_term_goals"]
+        if "long_term_goals" in profile_data:
+            profile.long_term_goals = profile_data["long_term_goals"]
+        if "work_preferences" in profile_data:
+            profile.work_preferences = profile_data["work_preferences"]
+        if "personal_interests" in profile_data:
+            profile.personal_interests = profile_data["personal_interests"]
+        if "reflection_frequency" in profile_data:
+            profile.reflection_frequency = profile_data["reflection_frequency"]
+        if "reflection_focus_areas" in profile_data:
+            profile.reflection_focus_areas = profile_data["reflection_focus_areas"]
+        if "communication_tone" in profile_data:
+            profile.communication_tone = profile_data["communication_tone"]
+        if "preferred_insights" in profile_data:
+            profile.preferred_insights = profile_data["preferred_insights"]
+        
+        profile.updated_at = datetime.now()
+        db.commit()
+        db.refresh(profile)
+        return profile
+    
+    @staticmethod
+    def delete_user_profile(db: Session, user_id: int) -> bool:
+        """Delete user profile"""
+        profile = UserProfileService.get_user_profile(db, user_id)
+        if profile:
+            db.delete(profile)
+            db.commit()
+            return True
+        return False
