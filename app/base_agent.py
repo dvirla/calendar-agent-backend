@@ -46,7 +46,7 @@ class BaseAgent:
             self.model,
             deps_type=CalendarDependencies,
             output_type=AgentResponse,
-            model_settings={"temperature": MODEL_TEMPRATURE},
+            # model_settings={"temperature": MODEL_TEMPRATURE},
             system_prompt=system_prompt
         )
         

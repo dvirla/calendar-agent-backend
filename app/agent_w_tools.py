@@ -46,9 +46,9 @@ class CalendarAIAgent:
             model,
             deps_type=CalendarDependencies,
             result_type=AgentResponse,
-            model_settings={
-                "temperature": MODEL_TEMPRATURE,
-            },
+            # model_settings={
+            #     "temperature": MODEL_TEMPRATURE,
+            # },
             system_prompt=f"""You are a calendar scheduling assistant. Current date/time: {self._get_current_time()}
 
 ## Core Functions
