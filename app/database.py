@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON, Numeric
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -55,6 +55,13 @@ class Conversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Analytics columns
+    overall_sentiment = Column(Numeric(5, 2), nullable=True)
+    energy_trend = Column(Text, nullable=True)
+    stress_indicators = Column(JSON, nullable=True)
+    analyzed = Column(Boolean, default=False)
+    last_analyzed_at = Column(DateTime, nullable=True)
+    
     # Relationships
     user = relationship("User", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")
@@ -82,6 +89,13 @@ class Message(Base):
     content = Column(Text, nullable=False)
     role = Column(String, nullable=False)  # 'user' or 'assistant'
     timestamp = Column(DateTime, default=datetime.utcnow)
+    
+    # Analytics columns
+    sentiment_score = Column(Numeric(5, 2), nullable=True)
+    energy_level = Column(Integer, nullable=True)
+    stress_level = Column(Integer, nullable=True)
+    satisfaction_level = Column(Integer, nullable=True)
+    analyzed = Column(Boolean, default=False)
     
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
