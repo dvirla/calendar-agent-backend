@@ -41,7 +41,7 @@ class DashboardService:
             recommendations = DashboardService._generate_recommendations(analyzed_messages)
             
             return {
-                "sentiment_metrics": sentiment_metrics,
+                **sentiment_metrics,  # Spread the sentiment metrics to top level
                 "weekly_reflections": weekly_reflections,
                 "insights": insights,
                 "recommendations": recommendations,
@@ -258,12 +258,10 @@ class DashboardService:
     def _get_mock_data() -> Dict[str, Any]:
         """Return mock data when no real data is available"""
         return {
-            "sentiment_metrics": {
-                "stress": {"value": 3.2, "max": 10, "trend": -0.3, "color": "text-orange-500", "bgColor": "bg-orange-100"},
-                "energy": {"value": 7.1, "max": 10, "trend": 0.8, "color": "text-green-500", "bgColor": "bg-green-100"},
-                "satisfaction": {"value": 6.8, "max": 10, "trend": 0.2, "color": "text-blue-500", "bgColor": "bg-blue-100"},
-                "happiness": {"value": 7.3, "max": 10, "trend": 0.5, "color": "text-purple-500", "bgColor": "bg-purple-100"}
-            },
+            "stress": {"value": 3.2, "max": 10, "trend": -0.3, "color": "text-orange-500", "bgColor": "bg-orange-100"},
+            "energy": {"value": 7.1, "max": 10, "trend": 0.8, "color": "text-green-500", "bgColor": "bg-green-100"},
+            "satisfaction": {"value": 6.8, "max": 10, "trend": 0.2, "color": "text-blue-500", "bgColor": "bg-blue-100"},
+            "happiness": {"value": 7.3, "max": 10, "trend": 0.5, "color": "text-purple-500", "bgColor": "bg-purple-100"},
             "weekly_reflections": [
                 {"date": "Today", "sentiment": "positive", "key_theme": "Getting started with reflections", "energy_level": 8},
                 {"date": "Yesterday", "sentiment": "neutral", "key_theme": "Building habits", "energy_level": 6},
