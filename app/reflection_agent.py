@@ -73,7 +73,7 @@ class ReflectionAgent(BaseAgent):
             self.model,
             deps_type=CalendarDependencies,
             output_type=AgentResponse,
-            # model_settings={"temperature": MODEL_TEMPRATURE},
+            model_settings={"temperature": MODEL_TEMPRATURE},
         )
 
         self._register_reflection_tools()
