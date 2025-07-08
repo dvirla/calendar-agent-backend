@@ -27,6 +27,9 @@ from .waitinglist_service import WaitlistManager
 from .reflection_agent import ReflectionAgent
 from .agent_factory import AgentFactory, AgentType
 from .main_agent import MainAgent
+from .insight_agent import InsightAgent
+import asyncio
+from .insight_agent_utils import generate_insights_background
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
 logfire.instrument_pydantic_ai() 
@@ -457,6 +460,51 @@ async def chat_with_reflection_agent(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/insights/get_insights")
+async def get_insights(
+    days: int = 7,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get comprehensive behavioral insights for the user"""
+    try:
+        # Get user's calendar credentials
+        credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
+        if not credentials_dict:
+            raise HTTPException(status_code=400, detail="Calendar not connected. Please authenticate first.")
+        
+        credentials = Credentials(
+            token=credentials_dict['token'],
+            refresh_token=credentials_dict['refresh_token'],
+            token_uri=credentials_dict['token_uri'],
+            client_id=credentials_dict['client_id'],
+            client_secret=credentials_dict['client_secret'],
+            scopes=credentials_dict['scopes']
+        )
+        
+        calendar_service = GoogleCalendarService(credentials)
+        insight_agent = InsightAgent(
+            calendar_service,
+            current_user.id,
+            current_user,
+            db
+        )
+        
+        # Generate comprehensive insights
+        insights = await insight_agent.generate_comprehensive_insights(days)
+        logfire.info(f"Generated insights: {insights}")
+        return {
+            "insights": insights,
+            "analysis_period": days,
+            "user_id": current_user.id,
+            "generated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logfire.error(f"Error generating insights: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating insights: {str(e)}")
+
         
 # User management endpoints
 @app.get("/user/profile")
