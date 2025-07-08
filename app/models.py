@@ -100,3 +100,12 @@ class UserProfileResponse(BaseModel):
 
 class ProfileUpdateRequest(BaseModel):
     message: str  # Natural language request to update profile
+
+class InsightResponse(BaseModel):
+    id: int
+    user_id: int
+    content: str
+    analysis_period: int
+    insights_type: str
+    created_at: datetime
+    from_cache: bool = False

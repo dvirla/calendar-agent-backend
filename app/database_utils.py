@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .database import SessionLocal, User, Conversation, Message, CalendarConnection, PendingAction, UserProfile
+from .database import SessionLocal, User, Conversation, Message, CalendarConnection, PendingAction, UserProfile, Insight
 from typing import Optional, List, Dict, Any
 import json
 from cryptography.fernet import Fernet
@@ -246,3 +246,44 @@ class UserProfileService:
             db.commit()
             return True
         return False
+
+class InsightService:
+    """Service for managing user insights"""
+    
+    @staticmethod
+    def get_latest_insight(db: Session, user_id: int) -> Optional[Insight]:
+        """Get the most recent insight for a user"""
+        return db.query(Insight).filter(Insight.user_id == user_id).order_by(Insight.created_at.desc()).first()
+    
+    @staticmethod
+    def get_insights_since(db: Session, user_id: int, since: datetime) -> List[Insight]:
+        """Get insights for a user since a specific date"""
+        return db.query(Insight).filter(
+            Insight.user_id == user_id,
+            Insight.created_at >= since
+        ).order_by(Insight.created_at.desc()).all()
+    
+    @staticmethod
+    def create_insight(db: Session, user_id: int, content: str, analysis_period: int, insights_type: str = "comprehensive") -> Insight:
+        """Create a new insight"""
+        insight = Insight(
+            user_id=user_id,
+            content=content,
+            analysis_period=analysis_period,
+            insights_type=insights_type
+        )
+        db.add(insight)
+        db.commit()
+        db.refresh(insight)
+        return insight
+    
+    @staticmethod
+    def should_generate_new_insight(db: Session, user_id: int, days_threshold: int = 7) -> bool:
+        """Check if we should generate a new insight based on the last generation time"""
+        latest_insight = InsightService.get_latest_insight(db, user_id)
+        if not latest_insight:
+            return True
+        
+        # Check if the latest insight is older than the threshold
+        threshold_date = datetime.now() - timedelta(days=days_threshold)
+        return latest_insight.created_at < threshold_date
