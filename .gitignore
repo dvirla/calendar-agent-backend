@@ -198,6 +198,7 @@ cython_debug/
 .env
 credentials*
 token*
+service_account.json
 
 # Docs
 *.md

@@ -27,6 +27,7 @@ from .waitinglist_service import WaitlistManager
 from .reflection_agent import ReflectionAgent
 from .agent_factory import AgentFactory, AgentType
 from .main_agent import MainAgent
+from .dashboard_service import DashboardService
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
 logfire.instrument_pydantic_ai() 
@@ -201,7 +202,25 @@ async def chat_with_agent(
         response = await ai_agent.chat(message.message, str(current_user.id), conversation.id)
         
         # Save agent response
-        ConversationService.add_message(db, conversation.id, response.message, "assistant")
+        assistant_message = ConversationService.add_message(db, conversation.id, response.message, "assistant")
+        
+        # If the response contains analytics (from ReflectionAgent), update the user message
+        if response.analytics:
+            # Get the most recent user message from this conversation
+            messages = ConversationService.get_conversation_messages(db, conversation.id)
+            user_messages = [msg for msg in messages if msg.role == 'user']
+            if user_messages:
+                latest_user_message = user_messages[-1]
+                ConversationService.update_message_analytics(
+                    db,
+                    latest_user_message.id,
+                    sentiment_score=response.analytics.sentiment_score,
+                    energy_level=response.analytics.energy_level,
+                    stress_level=response.analytics.stress_level,
+                    satisfaction_level=response.analytics.satisfaction_level
+                )
+                # Update conversation analytics as well
+                ConversationService.update_conversation_analytics(db, conversation.id)
         
         return ChatResponse(
             response=response.message,
@@ -405,58 +424,6 @@ async def get_reflection_prompt(
         logfire.error(f"Error: {e}")
         return {"prompt": "How was your day today? What did you accomplish?", "error": str(e)}
 
-@app.post("/reflection/chat", response_model=ChatResponse)
-async def chat_with_reflection_agent(
-    message: ChatMessage, 
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Chat with the reflection AI agent for insights and personal growth"""
-    try:
-        verification_result = verification_service.validate_user_input(message.message, current_user.id)
-        if not verification_result['valid']:
-            return ChatResponse(
-                response=verification_result['error'],
-                suggested_actions=None,
-                pending_actions=None,
-                requires_approval=None
-            )
-        
-        credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
-        if not credentials_dict:
-            raise HTTPException(status_code=400, detail="Calendar not connected. Please authenticate first.")
-        credentials = Credentials(
-            token=credentials_dict['token'],
-            refresh_token=credentials_dict['refresh_token'],
-            token_uri=credentials_dict['token_uri'],
-            client_id=credentials_dict['client_id'],
-            client_secret=credentials_dict['client_secret'],
-            scopes=credentials_dict['scopes']
-        )
-        calendar_service = GoogleCalendarService(credentials)
-        ai_agent = MainAgent(
-            calendar_service, 
-            current_user.id, 
-            current_user, 
-            db
-        )
-        conversations = db.query(Conversation).filter(Conversation.user_id == current_user.id).order_by(Conversation.created_at.desc()).all()
-        if not conversations:
-            conversation = ConversationService.create_conversation(db, current_user.id, "Reflection Chat Session")
-        else:
-            conversation = conversations[0]  # Use most recently created conversation
-        ConversationService.add_message(db, conversation.id, message.message, "user")
-        response = await ai_agent.chat(message.message, str(current_user.id), conversation.id)
-        ConversationService.add_message(db, conversation.id, response.message, "assistant")
-        
-        return ChatResponse(
-            response=response.message,
-            suggested_actions=None,
-            pending_actions=response.pending_actions,
-            requires_approval=response.requires_approval
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
         
 # User management endpoints
 @app.get("/user/profile")
@@ -629,6 +596,20 @@ async def check_existing(email_check: EmailCheck):
     try:
         exists = waitlist.check_existing_signup(email_check.email)
         return EmailCheckResponse(exists=exists)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Dashboard analytics endpoint
+@app.get("/dashboard/analytics")
+async def get_dashboard_analytics(
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get analytics data for dashboard visualization"""
+    try:
+        analytics_data = DashboardService.get_analytics_data(db, current_user.id, days)
+        return analytics_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -227,7 +227,8 @@ class BaseAgent:
             return AgentResponse(
                 message=result.output.message,
                 pending_actions=pending_list,
-                requires_approval=has_pending
+                requires_approval=has_pending,
+                analytics=result.output.analytics if hasattr(result.output, 'analytics') else None
             )
         except Exception as e:
             return AgentResponse(
