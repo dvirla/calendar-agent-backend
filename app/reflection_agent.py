@@ -1,5 +1,5 @@
 from pydantic_ai import RunContext, Agent
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 import pytz
 from .base_agent import BaseAgent
@@ -32,6 +32,7 @@ class ReflectionAgent(BaseAgent):
         - **Analyze**: Review user's activities, conversations, and patterns
         - **Reflect**: Generate thoughtful questions and insights about productivity and well-being
         - **Guide**: Offer personalized suggestions for improvement and growth
+        - **Measure**: Analyze and score user sentiment, energy, stress, and satisfaction levels
 
         ## Rules
         1. Focus on meaningful insights, not just data summaries
@@ -39,6 +40,24 @@ class ReflectionAgent(BaseAgent):
         3. Connect patterns across different time periods
         4. Provide actionable suggestions for improvement
         5. Be empathetic and encouraging in tone
+        6. ALWAYS analyze each conversation for analytics metrics
+
+        ## Analytics Scoring (CRITICAL - ALWAYS REQUIRED)
+        For EVERY response, you MUST analyze the user's message and provide analytics scores in the response:
+        - **sentiment_score**: Rate from -5.0 (very negative) to +5.0 (very positive)
+        - **energy_level**: Rate from 1 (very low) to 10 (very high) based on energy indicators
+        - **stress_level**: Rate from 1 (very calm) to 10 (very stressed) based on stress indicators
+        - **satisfaction_level**: Rate from 1 (very dissatisfied) to 10 (very satisfied)
+
+        ### Analytics Guidelines:
+        - Look for explicit mentions: "I'm feeling stressed", "I have high energy", "I'm satisfied"
+        - Consider implicit indicators: word choice, urgency, emotional tone, exclamation marks
+        - Negative words like "frustrated", "tired", "overwhelmed" indicate higher stress/lower energy
+        - Positive words like "excited", "accomplished", "happy" indicate positive sentiment/higher satisfaction
+        - Time-related pressure ("deadline", "rush") suggests higher stress
+        - Achievement language ("completed", "succeeded") suggests higher satisfaction
+
+        You MUST return analytics in your response structure. The analytics field is required.
 
         ## Available Tools
         - get_calendar_events: Access historical and upcoming events

@@ -26,6 +26,7 @@ import logfire
 from .waitinglist_service import WaitlistManager
 from .main_agent import MainAgent
 from .insight_agent import InsightAgent
+from .dashboard_service import DashboardService
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
 logfire.instrument_pydantic_ai() 
@@ -200,7 +201,25 @@ async def chat_with_agent(
         response = await ai_agent.chat(message.message, str(current_user.id), conversation.id)
         
         # Save agent response
-        ConversationService.add_message(db, conversation.id, response.message, "assistant")
+        assistant_message = ConversationService.add_message(db, conversation.id, response.message, "assistant")
+        
+        # If the response contains analytics (from ReflectionAgent), update the user message
+        if response.analytics:
+            # Get the most recent user message from this conversation
+            messages = ConversationService.get_conversation_messages(db, conversation.id)
+            user_messages = [msg for msg in messages if msg.role == 'user']
+            if user_messages:
+                latest_user_message = user_messages[-1]
+                ConversationService.update_message_analytics(
+                    db,
+                    latest_user_message.id,
+                    sentiment_score=response.analytics.sentiment_score,
+                    energy_level=response.analytics.energy_level,
+                    stress_level=response.analytics.stress_level,
+                    satisfaction_level=response.analytics.satisfaction_level
+                )
+                # Update conversation analytics as well
+                ConversationService.update_conversation_analytics(db, conversation.id)
         
         return ChatResponse(
             response=response.message,
@@ -694,6 +713,20 @@ async def check_existing(email_check: EmailCheck):
     try:
         exists = waitlist.check_existing_signup(email_check.email)
         return EmailCheckResponse(exists=exists)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Dashboard analytics endpoint
+@app.get("/dashboard/analytics")
+async def get_dashboard_analytics(
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get analytics data for dashboard visualization"""
+    try:
+        analytics_data = DashboardService.get_analytics_data(db, current_user.id, days)
+        return analytics_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

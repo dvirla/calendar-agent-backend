@@ -72,6 +72,106 @@ class ConversationService:
             Conversation.user_id == user_id,
             Conversation.created_at >= since
         ).order_by(Conversation.created_at.desc()).all()
+    
+    @staticmethod
+    def update_message_analytics(
+        db: Session, 
+        message_id: int, 
+        sentiment_score: Optional[float] = None,
+        energy_level: Optional[int] = None,
+        stress_level: Optional[int] = None,
+        satisfaction_level: Optional[int] = None
+    ) -> bool:
+        """Update analytics columns for a message"""
+        try:
+            message = db.query(Message).filter(Message.id == message_id).first()
+            if not message:
+                return False
+                
+            if sentiment_score is not None:
+                message.sentiment_score = sentiment_score
+            if energy_level is not None:
+                message.energy_level = energy_level
+            if stress_level is not None:
+                message.stress_level = stress_level
+            if satisfaction_level is not None:
+                message.satisfaction_level = satisfaction_level
+            
+            message.analyzed = True
+            db.commit()
+            return True
+        except Exception:
+            db.rollback()
+            return False
+    
+    @staticmethod
+    def update_conversation_analytics(
+        db: Session, 
+        conversation_id: int, 
+        overall_sentiment: Optional[float] = None,
+        energy_trend: Optional[str] = None,
+        stress_indicators: Optional[dict] = None
+    ) -> bool:
+        """Update analytics columns for a conversation"""
+        try:
+            conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+            if not conversation:
+                return False
+            
+            # If no specific values provided, calculate from messages
+            if overall_sentiment is None or energy_trend is None or stress_indicators is None:
+                messages = ConversationService.get_conversation_messages(db, conversation_id)
+                user_messages = [msg for msg in messages if msg.role == 'user' and msg.analyzed]
+                
+                if user_messages:
+                    # Calculate overall sentiment
+                    if overall_sentiment is None:
+                        sentiments = [msg.sentiment_score for msg in user_messages if msg.sentiment_score is not None]
+                        overall_sentiment = sum(sentiments) / len(sentiments) if sentiments else None
+                    
+                    # Determine energy trend
+                    if energy_trend is None:
+                        energy_levels = [msg.energy_level for msg in user_messages if msg.energy_level is not None]
+                        if len(energy_levels) >= 2:
+                            recent_energy = sum(energy_levels[-3:]) / len(energy_levels[-3:])
+                            earlier_energy = sum(energy_levels[:-3]) / len(energy_levels[:-3]) if len(energy_levels) > 3 else recent_energy
+                            
+                            if recent_energy > earlier_energy + 1:
+                                energy_trend = "increasing"
+                            elif recent_energy < earlier_energy - 1:
+                                energy_trend = "decreasing"
+                            else:
+                                energy_trend = "stable"
+                        else:
+                            energy_trend = "stable"
+                    
+                    # Identify stress indicators
+                    if stress_indicators is None:
+                        stress_levels = [msg.stress_level for msg in user_messages if msg.stress_level is not None]
+                        if stress_levels:
+                            high_stress_count = sum(1 for level in stress_levels if level > 6)
+                            stress_indicators = {
+                                "high_stress_instances": high_stress_count,
+                                "avg_stress_level": sum(stress_levels) / len(stress_levels),
+                                "trend": "concerning" if high_stress_count > len(stress_levels) * 0.3 else "normal"
+                            }
+                        else:
+                            stress_indicators = {"high_stress_instances": 0, "avg_stress_level": 3, "trend": "normal"}
+                
+            if overall_sentiment is not None:
+                conversation.overall_sentiment = overall_sentiment
+            if energy_trend is not None:
+                conversation.energy_trend = energy_trend
+            if stress_indicators is not None:
+                conversation.stress_indicators = stress_indicators
+            
+            conversation.analyzed = True
+            conversation.last_analyzed_at = datetime.utcnow()
+            db.commit()
+            return True
+        except Exception:
+            db.rollback()
+            return False
 
 class CalendarService:
     @staticmethod
