@@ -364,7 +364,7 @@ class InsightService:
         ).order_by(Insight.created_at.desc()).all()
     
     @staticmethod
-    def create_insight(db: Session, user_id: int, content: str, analysis_period: int, insights_type: str = "comprehensive") -> Insight:
+    def create_insight(db: Session, user_id: int, content: Dict[str, Dict[str, str]], analysis_period: int, insights_type: str = "comprehensive") -> Insight:
         """Create a new insight"""
         insight = Insight(
             user_id=user_id,

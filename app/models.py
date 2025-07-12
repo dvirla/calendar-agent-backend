@@ -101,10 +101,20 @@ class UserProfileResponse(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     message: str  # Natural language request to update profile
 
+class InsightSection(BaseModel):
+    summary: str
+    full_content: str
+
+class InsightContent(BaseModel):
+    goal_alignment: InsightSection
+    energy_management: InsightSection
+    time_allocation: InsightSection
+    behavioral_trends: InsightSection
+
 class InsightResponse(BaseModel):
     id: int
     user_id: int
-    content: str
+    content: InsightContent
     analysis_period: int
     insights_type: str
     created_at: datetime

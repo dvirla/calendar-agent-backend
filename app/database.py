@@ -144,7 +144,7 @@ class Insight(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    content = Column(Text, nullable=False)  # The actual insights text
+    content = Column(JSON, nullable=False)  # List of insights for each subject
     analysis_period = Column(Integer, nullable=False)  # Days analyzed (7, 30, etc.)
     insights_type = Column(String, default="comprehensive")  # comprehensive, productivity, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
