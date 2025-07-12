@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent, WaitlistSignup, WaitlistResponse, WaitlistStats, EmailCheck, EmailCheckResponse, InsightResponse
+from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent, WaitlistSignup, WaitlistResponse, WaitlistStats, EmailCheck, EmailCheckResponse, InsightResponse, InsightContent, InsightSection
 from .calendar_service import GoogleCalendarService
 from .agent_w_tools import CalendarAIAgent
 from .database import Base, engine, User, Conversation, Insight
@@ -490,15 +490,39 @@ async def get_insights(
             latest_insight = InsightService.get_latest_insight(db, current_user.id)
             if latest_insight:
                 logfire.info(f"Returning cached insights for user {current_user.id}")
-                return InsightResponse(
+                content_dict = latest_insight.content
+                
+                # Helper function to create InsightSection from dict or string
+                def create_insight_section(data):
+                    if isinstance(data, dict):
+                        return InsightSection(
+                            summary=data.get('summary', ''),
+                            full_content=data.get('full_content', '')
+                        )
+                    else:
+                        # Legacy format - treat as full content
+                        return InsightSection(
+                            summary=data[:100] + "..." if len(str(data)) > 100 else str(data),
+                            full_content=str(data)
+                        )
+                
+                insight_content = InsightContent(
+                    goal_alignment=create_insight_section(content_dict.get('goal_alignment', {})),
+                    energy_management=create_insight_section(content_dict.get('energy_management', {})),
+                    time_allocation=create_insight_section(content_dict.get('time_allocation', {})),
+                    behavioral_trends=create_insight_section(content_dict.get('behavioral_trends', {}))
+                )
+                insight_response = InsightResponse(
                     id=latest_insight.id,
                     user_id=latest_insight.user_id,
-                    content=latest_insight.content,
+                    content=insight_content,
                     analysis_period=latest_insight.analysis_period,
                     insights_type=latest_insight.insights_type,
                     created_at=latest_insight.created_at,
                     from_cache=True
                 )
+                logfire.info(f"Sending insights to user {current_user.id}: period={latest_insight.analysis_period} days, type={latest_insight.insights_type}, from_cache=True")
+                return insight_response
         
         credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
         if not credentials_dict:
@@ -518,24 +542,46 @@ async def get_insights(
             current_user,
             db
         )
-        insights_content = await insight_agent.generate_comprehensive_insights(days)
+        insights_content_dict = await insight_agent.generate_comprehensive_insights(days)
         insight_record = InsightService.create_insight(
             db, 
             current_user.id, 
-            insights_content, 
+            insights_content_dict, 
             days, 
             "comprehensive"
         )
         logfire.info(f"Generated and saved new insights for user {current_user.id}")
-        return InsightResponse(
+        # Helper function to create InsightSection from dict
+        def create_insight_section_from_dict(data):
+            if isinstance(data, dict):
+                return InsightSection(
+                    summary=data.get('summary', ''),
+                    full_content=data.get('full_content', '')
+                )
+            else:
+                # Fallback for any unexpected format
+                return InsightSection(
+                    summary=str(data)[:100] + "..." if len(str(data)) > 100 else str(data),
+                    full_content=str(data)
+                )
+        
+        insight_content = InsightContent(
+            goal_alignment=create_insight_section_from_dict(insights_content_dict.get('goal_alignment', {})),
+            energy_management=create_insight_section_from_dict(insights_content_dict.get('energy_management', {})),
+            time_allocation=create_insight_section_from_dict(insights_content_dict.get('time_allocation', {})),
+            behavioral_trends=create_insight_section_from_dict(insights_content_dict.get('behavioral_trends', {}))
+        )
+        insight_response = InsightResponse(
             id=insight_record.id,
             user_id=insight_record.user_id,
-            content=insight_record.content,
+            content=insight_content,
             analysis_period=insight_record.analysis_period,
             insights_type=insight_record.insights_type,
             created_at=insight_record.created_at,
             from_cache=False
         )
+        logfire.info(f"Sending insights to user {current_user.id}: period={days} days, type=comprehensive, from_cache=False")
+        return insight_response
         
     except Exception as e:
         logfire.error(f"Error generating insights: {e}")
