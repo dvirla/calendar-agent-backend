@@ -32,6 +32,7 @@ class User(Base):
     conversations = relationship("Conversation", back_populates="user")
     calendar_connection = relationship("CalendarConnection", back_populates="user", uselist=False)
     reflections = relationship("Reflection", back_populates="user")
+    insights = relationship("Insight", back_populates="user")
 
 class CalendarConnection(Base):
     __tablename__ = "calendar_connections"
@@ -137,6 +138,19 @@ class UserProfile(Base):
     
     # Relationships
     user = relationship("User", back_populates="profile")
+
+class Insight(Base):
+    __tablename__ = "insights"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(JSON, nullable=False)  # List of insights for each subject
+    analysis_period = Column(Integer, nullable=False)  # Days analyzed (7, 30, etc.)
+    insights_type = Column(String, default="comprehensive")  # comprehensive, productivity, etc.
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="insights")
 
 
 if __name__ == "__main__":

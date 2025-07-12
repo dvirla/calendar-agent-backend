@@ -3,11 +3,11 @@ from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent, WaitlistSignup, WaitlistResponse, WaitlistStats, EmailCheck, EmailCheckResponse
+from .models import ChatMessage, ChatResponse, CreateEventRequest, CalendarEvent, WaitlistSignup, WaitlistResponse, WaitlistStats, EmailCheck, EmailCheckResponse, InsightResponse, InsightContent, InsightSection
 from .calendar_service import GoogleCalendarService
 from .agent_w_tools import CalendarAIAgent
-from .database import Base, engine, User, Conversation
-from .database_utils import get_db, UserService, ConversationService, CalendarService, PendingActionService
+from .database import Base, engine, User, Conversation, Insight
+from .database_utils import get_db, UserService, ConversationService, CalendarService, PendingActionService, InsightService
 from .auth import AuthService, get_current_user
 from datetime import datetime, timedelta, timezone
 import os
@@ -24,9 +24,8 @@ from .config import (
 from .verification_service import VerificationService
 import logfire
 from .waitinglist_service import WaitlistManager
-from .reflection_agent import ReflectionAgent
-from .agent_factory import AgentFactory, AgentType
 from .main_agent import MainAgent
+from .insight_agent import InsightAgent
 from .dashboard_service import DashboardService
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
@@ -347,7 +346,7 @@ async def get_calendar_events(
         calendar_service = GoogleCalendarService(credentials)
         
         events = calendar_service.get_events(days_ahead=7)
-        return {"events": [event.dict() for event in events]}
+        return {"events": [event.model_dump() for event in events]}
     except Exception as e:
         raise HTTPException(status_code=400, detail="Calendar not connected or error fetching events")
 
@@ -423,6 +422,141 @@ async def get_reflection_prompt(
     except Exception as e:
         logfire.error(f"Error: {e}")
         return {"prompt": "How was your day today? What did you accomplish?", "error": str(e)}
+
+@app.post("/reflection/chat", response_model=ChatResponse)
+async def chat_with_reflection_agent(
+    message: ChatMessage, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Chat with the reflection AI agent for insights and personal growth"""
+    try:
+        verification_result = verification_service.validate_user_input(message.message, current_user.id)
+        if not verification_result['valid']:
+            return ChatResponse(
+                response=verification_result['error'],
+                suggested_actions=None,
+                pending_actions=None,
+                requires_approval=None
+            )
+        
+        credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
+        if not credentials_dict:
+            raise HTTPException(status_code=400, detail="Calendar not connected. Please authenticate first.")
+        credentials = Credentials(
+            token=credentials_dict['token'],
+            refresh_token=credentials_dict['refresh_token'],
+            token_uri=credentials_dict['token_uri'],
+            client_id=credentials_dict['client_id'],
+            client_secret=credentials_dict['client_secret'],
+            scopes=credentials_dict['scopes']
+        )
+        calendar_service = GoogleCalendarService(credentials)
+        ai_agent = MainAgent(
+            calendar_service, 
+            current_user.id, 
+            current_user, 
+            db
+        )
+        conversations = db.query(Conversation).filter(Conversation.user_id == current_user.id).order_by(Conversation.created_at.desc()).all()
+        if not conversations:
+            conversation = ConversationService.create_conversation(db, current_user.id, "Reflection Chat Session")
+        else:
+            conversation = conversations[0]  # Use most recently created conversation
+        ConversationService.add_message(db, conversation.id, message.message, "user")
+        response = await ai_agent.chat(message.message, str(current_user.id), conversation.id)
+        ConversationService.add_message(db, conversation.id, response.message, "assistant")
+        
+        return ChatResponse(
+            response=response.message,
+            suggested_actions=None,
+            pending_actions=response.pending_actions,
+            requires_approval=response.requires_approval
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/insights/get_insights", response_model=InsightResponse)
+async def get_insights(
+    days: int = 7,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get comprehensive behavioral insights for the user"""
+    try:
+        # Check if we should generate new insights or use cached ones
+        if not InsightService.should_generate_new_insight(db, current_user.id, days_threshold=7):
+            # Return the latest cached insight
+            latest_insight = InsightService.get_latest_insight(db, current_user.id)
+            if latest_insight:
+                logfire.info(f"Returning cached insights for user {current_user.id}")
+                content_dict = latest_insight.content
+                
+                insight_content = InsightContent(
+                    goal_alignment=content_dict.get('goal_alignment', {}),
+                    energy_management=content_dict.get('energy_management', {}),
+                    time_allocation=content_dict.get('time_allocation', {}),
+                    behavioral_trends=content_dict.get('behavioral_trends', {}),
+                )
+                insight_response = InsightResponse(
+                    id=latest_insight.id,
+                    user_id=latest_insight.user_id,
+                    content=insight_content,
+                    analysis_period=latest_insight.analysis_period,
+                    insights_type=latest_insight.insights_type,
+                    created_at=latest_insight.created_at,
+                    from_cache=True
+                )
+                logfire.info(f"Sending insights to user {current_user.id}: period={latest_insight.analysis_period} days, type={latest_insight.insights_type}, from_cache=True")
+                return insight_response
+        
+        credentials_dict = CalendarService.get_calendar_credentials(db, current_user.id)
+        if not credentials_dict:
+            raise HTTPException(status_code=400, detail="Calendar not connected. Please authenticate first.")
+        credentials = Credentials(
+            token=credentials_dict['token'],
+            refresh_token=credentials_dict['refresh_token'],
+            token_uri=credentials_dict['token_uri'],
+            client_id=credentials_dict['client_id'],
+            client_secret=credentials_dict['client_secret'],
+            scopes=credentials_dict['scopes']
+        )
+        calendar_service = GoogleCalendarService(credentials)
+        insight_agent = InsightAgent(
+            calendar_service,
+            current_user.id,
+            current_user,
+            db
+        )
+        insights_content_dict = await insight_agent.generate_comprehensive_insights(days)
+        insight_record = InsightService.create_insight(
+            db, 
+            current_user.id, 
+            insights_content_dict, 
+            days, 
+            "comprehensive"
+        )
+        insight_content = InsightContent(
+            goal_alignment=insights_content_dict.get('goal_alignment', {}),
+            energy_management=insights_content_dict.get('energy_management', {}),
+            time_allocation=insights_content_dict.get('time_allocation', {}),
+            behavioral_trends=insights_content_dict.get('behavioral_trends', {}),
+        )
+        insight_response = InsightResponse(
+            id=insight_record.id,
+            user_id=insight_record.user_id,
+            content=insight_content,
+            analysis_period=insight_record.analysis_period,
+            insights_type=insight_record.insights_type,
+            created_at=insight_record.created_at,
+            from_cache=False
+        )
+        logfire.info(f"Sending insights to user {current_user.id}: period={days} days, type=comprehensive, from_cache=False")
+        return insight_response
+        
+    except Exception as e:
+        logfire.error(f"Error generating insights: {e}")
+        raise HTTPException(status_code=500, detail=f"Error generating insights: {str(e)}")
 
         
 # User management endpoints
