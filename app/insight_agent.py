@@ -4,6 +4,7 @@ from datetime import timedelta
 import pytz
 from .base_agent import BaseAgent
 from .agent_dataclasses import CalendarDependencies, AgentResponse
+from pydantic import BaseModel
 import logfire
 from .config import LOGFIRE_TOKEN, MODEL_TEMPRATURE
 import logging
@@ -18,6 +19,18 @@ logger = logging.getLogger(__name__)
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)
 logfire.instrument_pydantic_ai()
 
+
+class InsightSection(BaseModel):
+    """Structure for each insight section"""
+    full_content: str
+    summary: str
+
+class StructuredInsights(BaseModel):
+    """Structured output for insights"""
+    goal_alignment: InsightSection
+    energy_management: InsightSection
+    time_allocation: InsightSection
+    behavioral_trends: InsightSection
 
 class InsightAgent(BaseAgent):
     """AI agent specialized in extracting behavioral insights from user data"""
@@ -62,7 +75,7 @@ class InsightAgent(BaseAgent):
         self.analysis_agent = Agent(
             self.model,
             deps_type=CalendarDependencies,
-            output_type=AgentResponse,
+            output_type=StructuredInsights,
             model_settings={"temperature": MODEL_TEMPRATURE},
         )
 
@@ -396,67 +409,57 @@ class InsightAgent(BaseAgent):
                 pending_actions=current_pending_actions,
             )
             
-            # Generate all insights in a single request to avoid hitting request limits
-            comprehensive_prompt = f"""Generate a comprehensive behavioral insight report for the past {days} days.
-            
-            For each category below, provide BOTH a brief summary (1-2 sentences) AND detailed full content (2-3 paragraphs).
-            Format your response exactly as shown with clear section headers and subsections:
+            # Generate structured insights using Pydantic model
+            comprehensive_prompt = f"""Analyze the past {days} days and generate comprehensive behavioral insights.
 
-            ## Goal Alignment
-            ### Summary
-            [Brief 1-2 sentence summary of goal alignment insights]
+            For each of the four categories below, provide detailed analysis in the full_content field (2-3 paragraphs with specific metrics and actionable recommendations), and create a concise summary (1-2 sentences) that captures the key findings.
+
+            Goal Alignment: Analyze progress toward objectives, time invested in goal-oriented activities, alignment between calendar activities and potential goals, and provide specific recommendations for better goal achievement.
+
+            Energy Management: Analyze energy patterns throughout different times of day, correlation between activities and energy levels, identify peak performance periods, and provide specific recommendations for optimizing energy use.
+
+            Time Allocation: Analyze how time is distributed across different activity types, compare intended vs actual time use, identify efficiency patterns, and provide specific recommendations for better time management.
+
+            Behavioral Trends: Analyze emerging patterns in habits and decisions, consistency in routines and behaviors, changes in behavior over time, and provide specific recommendations for positive behavioral reinforcement.
+
+            IMPORTANT: 
+            - Provide specific, measurable recommendations with metrics where possible
+            - Include time-based suggestions (e.g., "allocate 2 hours daily", "schedule at 9 AM")
+            - Each summary should be 1-2 sentences maximum
+            - Each full_content should be 2-3 detailed paragraphs
+            - Use data from calendar events and conversation patterns to support insights"""
             
-            ### Full Content
-            [Detailed 2-3 paragraph analysis covering:
-            - Progress toward stated objectives
-            - Time invested in goal-oriented activities  
-            - Alignment between calendar activities and potential goals
-            - Specific recommendations for better goal achievement with metrics]
+            result = await self.analysis_agent.run(comprehensive_prompt, deps=deps)
+            structured_insights = result.output
             
-            ## Energy Management
-            ### Summary
-            [Brief 1-2 sentence summary of energy management insights]
+            # Convert structured output to the expected dictionary format
+            insights_dict = {
+                'goal_alignment': {
+                    'summary': structured_insights.goal_alignment.summary,
+                    'full_content': structured_insights.goal_alignment.full_content
+                },
+                'energy_management': {
+                    'summary': structured_insights.energy_management.summary,
+                    'full_content': structured_insights.energy_management.full_content
+                },
+                'time_allocation': {
+                    'summary': structured_insights.time_allocation.summary,
+                    'full_content': structured_insights.time_allocation.full_content
+                },
+                'behavioral_trends': {
+                    'summary': structured_insights.behavioral_trends.summary,
+                    'full_content': structured_insights.behavioral_trends.full_content
+                }
+            }
             
-            ### Full Content
-            [Detailed 2-3 paragraph analysis covering:
-            - Energy levels throughout different times of day
-            - Correlation between activities and energy patterns
-            - Peak performance periods
-            - Specific recommendations for optimizing energy use with timing]
+            logger.info(f"Generated structured insights successfully")
+            for key, value in insights_dict.items():
+                logger.info(f"{key}: summary='{value['summary'][:50]}...', full_content='{value['full_content'][:50]}...'")
             
-            ## Time Allocation
-            ### Summary
-            [Brief 1-2 sentence summary of time allocation insights]
-            
-            ### Full Content
-            [Detailed 2-3 paragraph analysis covering:
-            - How time is distributed across different activity types
-            - Comparison of intended vs actual time use
-            - Time efficiency patterns
-            - Specific recommendations for better time management with breakdowns]
-            
-            ## Behavioral Trends
-            ### Summary
-            [Brief 1-2 sentence summary of behavioral trends insights]
-            
-            ### Full Content
-            [Detailed 2-3 paragraph analysis covering:
-            - Emerging patterns in habits and decisions
-            - Consistency in routines and behaviors  
-            - Changes in behavior over time
-            - Specific recommendations for positive behavioral reinforcement]
-            
-            Provide specific, actionable recommendations with metrics where possible."""
-            
-            result = await self.agent.run(comprehensive_prompt, deps=deps)
-            response_text = result.output.message
-            
-            # Parse the response to extract each section with summary and full content
-            insights = self._parse_structured_response_with_summary(response_text)
-            
-            return insights
+            return insights_dict
             
         except Exception as e:
+            logger.error(f"Error generating insights: {str(e)}")
             error_section = {
                 'summary': f"Error analyzing insights: {str(e)}",
                 'full_content': f"Unable to generate insights due to: {str(e)}"
@@ -468,117 +471,3 @@ class InsightAgent(BaseAgent):
                 'behavioral_trends': error_section
             }
     
-    def _parse_structured_response_with_summary(self, response_text: str) -> Dict[str, Dict[str, str]]:
-        """Parse the structured response into separate insight categories with summary and full content"""
-        insights = {
-            'goal_alignment': {'summary': '', 'full_content': ''},
-            'energy_management': {'summary': '', 'full_content': ''},
-            'time_allocation': {'summary': '', 'full_content': ''},
-            'behavioral_trends': {'summary': '', 'full_content': ''}
-        }
-        
-        # Split response by main section headers (##)
-        main_sections = response_text.split('##')
-        
-        for section in main_sections:
-            section = section.strip()
-            if not section:
-                continue
-                
-            # Extract section header
-            lines = section.split('\n', 1)
-            if len(lines) < 2:
-                continue
-                
-            header = lines[0].strip().lower()
-            section_content = lines[1].strip()
-            
-            # Determine which insight category this is
-            category_key = None
-            if 'goal alignment' in header:
-                category_key = 'goal_alignment'
-            elif 'energy management' in header:
-                category_key = 'energy_management'
-            elif 'time allocation' in header:
-                category_key = 'time_allocation'
-            elif 'behavioral trends' in header:
-                category_key = 'behavioral_trends'
-            
-            if not category_key:
-                continue
-                
-            # Parse summary and full content subsections
-            subsections = section_content.split('###')
-            
-            for subsection in subsections:
-                subsection = subsection.strip()
-                if not subsection:
-                    continue
-                    
-                sub_lines = subsection.split('\n', 1)
-                if len(sub_lines) < 2:
-                    continue
-                    
-                sub_header = sub_lines[0].strip().lower()
-                sub_content = sub_lines[1].strip()
-                
-                if 'summary' in sub_header:
-                    insights[category_key]['summary'] = sub_content
-                elif 'full content' in sub_header:
-                    insights[category_key]['full_content'] = sub_content
-        
-        # Fallback: if parsing fails, use the entire response for each section
-        if not any(section['summary'] or section['full_content'] for section in insights.values()):
-            fallback_content = response_text[:200] + "..." if len(response_text) > 200 else response_text
-            fallback_section = {
-                'summary': fallback_content,
-                'full_content': response_text
-            }
-            for key in insights:
-                insights[key] = fallback_section.copy()
-        
-        return insights
-    
-    def _parse_structured_response(self, response_text: str) -> Dict[str, str]:
-        """Legacy method - parse the structured response into separate insight categories"""
-        insights = {
-            'goal_alignment': '',
-            'energy_management': '',
-            'time_allocation': '',
-            'behavioral_trends': ''
-        }
-        
-        # Split response by section headers
-        sections = response_text.split('##')
-        
-        for section in sections:
-            section = section.strip()
-            if not section:
-                continue
-                
-            lines = section.split('\n', 1)
-            if len(lines) < 2:
-                continue
-                
-            header = lines[0].strip().lower()
-            content = lines[1].strip()
-            
-            if 'goal alignment' in header:
-                insights['goal_alignment'] = content
-            elif 'energy management' in header:
-                insights['energy_management'] = content
-            elif 'time allocation' in header:
-                insights['time_allocation'] = content
-            elif 'behavioral trends' in header:
-                insights['behavioral_trends'] = content
-        
-        # Fallback: if parsing fails, distribute content evenly
-        if not any(insights.values()):
-            insights = {
-                'goal_alignment': response_text[:len(response_text)//4],
-                'energy_management': response_text[len(response_text)//4:len(response_text)//2],
-                'time_allocation': response_text[len(response_text)//2:3*len(response_text)//4],
-                'behavioral_trends': response_text[3*len(response_text)//4:]
-            }
-        
-        return insights

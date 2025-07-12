@@ -492,25 +492,11 @@ async def get_insights(
                 logfire.info(f"Returning cached insights for user {current_user.id}")
                 content_dict = latest_insight.content
                 
-                # Helper function to create InsightSection from dict or string
-                def create_insight_section(data):
-                    if isinstance(data, dict):
-                        return InsightSection(
-                            summary=data.get('summary', ''),
-                            full_content=data.get('full_content', '')
-                        )
-                    else:
-                        # Legacy format - treat as full content
-                        return InsightSection(
-                            summary=data[:100] + "..." if len(str(data)) > 100 else str(data),
-                            full_content=str(data)
-                        )
-                
                 insight_content = InsightContent(
-                    goal_alignment=create_insight_section(content_dict.get('goal_alignment', {})),
-                    energy_management=create_insight_section(content_dict.get('energy_management', {})),
-                    time_allocation=create_insight_section(content_dict.get('time_allocation', {})),
-                    behavioral_trends=create_insight_section(content_dict.get('behavioral_trends', {}))
+                    goal_alignment=content_dict.get('goal_alignment', {}),
+                    energy_management=content_dict.get('energy_management', {}),
+                    time_allocation=content_dict.get('time_allocation', {}),
+                    behavioral_trends=content_dict.get('behavioral_trends', {}),
                 )
                 insight_response = InsightResponse(
                     id=latest_insight.id,
@@ -550,26 +536,11 @@ async def get_insights(
             days, 
             "comprehensive"
         )
-        logfire.info(f"Generated and saved new insights for user {current_user.id}")
-        # Helper function to create InsightSection from dict
-        def create_insight_section_from_dict(data):
-            if isinstance(data, dict):
-                return InsightSection(
-                    summary=data.get('summary', ''),
-                    full_content=data.get('full_content', '')
-                )
-            else:
-                # Fallback for any unexpected format
-                return InsightSection(
-                    summary=str(data)[:100] + "..." if len(str(data)) > 100 else str(data),
-                    full_content=str(data)
-                )
-        
         insight_content = InsightContent(
-            goal_alignment=create_insight_section_from_dict(insights_content_dict.get('goal_alignment', {})),
-            energy_management=create_insight_section_from_dict(insights_content_dict.get('energy_management', {})),
-            time_allocation=create_insight_section_from_dict(insights_content_dict.get('time_allocation', {})),
-            behavioral_trends=create_insight_section_from_dict(insights_content_dict.get('behavioral_trends', {}))
+            goal_alignment=insights_content_dict.get('goal_alignment', {}),
+            energy_management=insights_content_dict.get('energy_management', {}),
+            time_allocation=insights_content_dict.get('time_allocation', {}),
+            behavioral_trends=insights_content_dict.get('behavioral_trends', {}),
         )
         insight_response = InsightResponse(
             id=insight_record.id,
