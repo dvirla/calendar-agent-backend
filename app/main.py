@@ -30,8 +30,7 @@ from .dashboard_service import DashboardService
 
 logfire.configure(token=LOGFIRE_TOKEN, scrubbing=False)  
 logfire.instrument_pydantic_ai() 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# Database tables will be created/updated via Alembic migrations
 
 app = FastAPI(title="Calendar Agent API")
 verification_service = VerificationService()
