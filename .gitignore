@@ -196,10 +196,20 @@ cython_debug/
 
 # Credentials and environment
 .env
+.env.*
+!.env.example
 credentials*
 token*
 service_account.json
+*.key
+*.pem
+*.p12
+*.json
+!package*.json
+!alembic.ini
 
 # Docs
 *.md
 !README.md
+!CONTRIBUTING.md
+!LICENSE
